@@ -98,7 +98,7 @@ public final class GameImportManager {
 
     private static String safeName(String value) {
         if (value == null) return null;
-        String name = value.replace("/", "_").replace("\\\\", "_").trim();
+        String name = value.replace("/", "_").replace("\\", "_").trim();
         return name.isEmpty() ? null : name;
     }
 
@@ -119,7 +119,7 @@ public final class GameImportManager {
             if (peOffset < 64 || peOffset + 6 > input.length()) return false;
             input.seek(peOffset);
             if (input.readUnsignedByte() != 'P' || input.readUnsignedByte() != 'E' || input.readUnsignedByte() != 0 || input.readUnsignedByte() != 0) return false;
-            return input.readUnsignedShort() == 0x8664;
+            return Short.reverseBytes(input.readShort()) == (short)0x8664;
         }
         catch (Exception e) { return false; }
     }
