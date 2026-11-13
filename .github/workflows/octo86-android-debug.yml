@@ -1,13 +1,17 @@
-name: Octo86 Android debug APK
+name: A0E3 Android debug APK
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/octo86-android-debug.yml
 
 permissions:
   contents: read
 
 concurrency:
-  group: octo86-android-debug-${{ github.ref }}
+  group: a0e3-android-debug-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -17,7 +21,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Check out Octo86 Winlator source
+      - name: Check out A0E3 source
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -39,11 +43,12 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Verify Octo86 UI integration
+      - name: Verify A0E3 integration
         run: |
           test -f app/src/main/java/com/winlator/Aoe3HomeFragment.java
+          test -f app/src/main/java/com/winlator/GameImportManager.java
           grep -q "Aoe3HomeFragment" app/src/main/java/com/winlator/MainActivity.java
-          grep -q "Octo86" app/src/main/res/values/strings.xml
+          grep -q 'name="app_name">A0E3<' app/src/main/res/values/strings.xml
 
       - name: Build ARM64 debug APK
         run: |
@@ -53,7 +58,7 @@ jobs:
       - name: Upload ARM64 debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: octo86-arm64-debug
+          name: a0e3-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
