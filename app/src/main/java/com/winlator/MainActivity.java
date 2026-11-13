@@ -202,13 +202,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 GameImportManager.Result result = GameImportManager.importGame(this, treeUri, container);
                 runOnUiThread(() -> {
                     progress.dismiss();
-                    preferences.edit()
-                        .putInt("aoe3_container_id", container.id)
-                        .putString("aoe3_executable_path", result.executable.getAbsolutePath())
-                        .putString("aoe3_install_path", result.installDirectory.getAbsolutePath())
-                        .apply();
-                    Toast.makeText(this, "Import complete. Found 64-bit executable: " + result.executable.getName(), Toast.LENGTH_LONG).show();
-                    showFragment(new Aoe3HomeFragment());
+                    selectGameExecutable(container, result);
                 });
             }
             catch (Exception e) {
@@ -220,12 +214,42 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         }).start();
     }
 
+    private void selectGameExecutable(Container container, GameImportManager.Result result) {
+        ArrayList<String> labels = new ArrayList<>();
+        for (java.io.File executable : result.executables) {
+            String relative = executable.getAbsolutePath().substring(result.installDirectory.getAbsolutePath().length());
+            labels.add(relative.startsWith(java.io.File.separator) ? relative.substring(1) : relative);
+        }
+        String[] choices = labels.toArray(new String[0]);
+        new AlertDialog.Builder(this)
+            .setTitle("Choose the game executable")
+            .setMessage("Select the main Age of Empires III: Definitive Edition executable. Only 64-bit Windows executables are listed.")
+            .setItems(choices, (dialog, which) -> {
+                java.io.File executable = result.executables.get(which);
+                preferences.edit()
+                    .putInt("aoe3_container_id", container.id)
+                    .putString("aoe3_executable_path", executable.getAbsolutePath())
+                    .putString("aoe3_install_path", result.installDirectory.getAbsolutePath())
+                    .apply();
+                Toast.makeText(this, "Game executable selected: " + executable.getName(), Toast.LENGTH_LONG).show();
+                showFragment(new Aoe3HomeFragment());
+            })
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
     @Override
     public void onLaunchGame() {
         int containerId = preferences.getInt("aoe3_container_id", 0);
         String executable = preferences.getString("aoe3_executable_path", null);
         if (containerId <= 0 || executable == null || !new java.io.File(executable).isFile()) {
             Toast.makeText(this, "Import and validate the game folder before launching.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Container container = new ContainerManager(this).getContainerById(containerId);
+        if (container == null) {
+            preferences.edit().remove("aoe3_container_id").remove("aoe3_executable_path").remove("aoe3_install_path").apply();
+            Toast.makeText(this, "The selected Winlator container no longer exists. Import the game again.", Toast.LENGTH_LONG).show();
+            showFragment(new Aoe3HomeFragment());
             return;
         }
         Intent intent = new Intent(this, XServerDisplayActivity.class);
