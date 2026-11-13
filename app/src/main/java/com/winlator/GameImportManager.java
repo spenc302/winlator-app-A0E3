@@ -26,10 +26,10 @@ public final class GameImportManager {
 
     public static final class Result {
         public final File installDirectory;
-        public final File executable;
-        Result(File installDirectory, File executable) {
+        public final List<File> executables;
+        Result(File installDirectory, List<File> executables) {
             this.installDirectory = installDirectory;
-            this.executable = executable;
+            this.executables = executables;
         }
     }
 
@@ -37,9 +37,7 @@ public final class GameImportManager {
 
     public static Result importGame(Context context, Uri treeUri, Container container) throws Exception {
         String rootId = DocumentsContract.getTreeDocumentId(treeUri);
-        Uri rootDocument = DocumentsContract.buildDocumentUriUsingTree(treeUri, rootId);
-        String rootName = queryName(context.getContentResolver(), rootDocument);
-        if (rootName == null || rootName.trim().isEmpty()) rootName = "Game Files";
+        if (container == null || container.getUserDir() == null) throw new IllegalStateException("The selected Winlator container is unavailable.");
 
         File target = new File(container.getUserDir(), "Documents/A0E3/Age of Empires III Definitive Edition");
         if (target.exists()) throw new IllegalStateException("An imported game folder already exists in this container. Remove it before importing again.");
@@ -50,9 +48,7 @@ public final class GameImportManager {
             List<File> candidates = new ArrayList<>();
             findX64Executables(target, candidates);
             if (candidates.isEmpty()) throw new IllegalStateException("The selected folder was copied, but no 64-bit Windows executable was found. Select the actual game installation folder.");
-            File chosen = chooseExecutable(candidates);
-            if (chosen == null) throw new IllegalStateException("64-bit Windows executables were found, but none could be identified confidently as the Age of Empires III launcher. Import was rolled back.");
-            return new Result(target, chosen);
+            return new Result(target, candidates);
         }
         catch (Exception e) {
             deleteRecursively(target);
@@ -90,13 +86,6 @@ public final class GameImportManager {
         }
     }
 
-    private static String queryName(ContentResolver resolver, Uri documentUri) {
-        try (Cursor cursor = resolver.query(documentUri, new String[]{DocumentsContract.Document.COLUMN_DISPLAY_NAME}, null, null, null)) {
-            return cursor != null && cursor.moveToFirst() ? cursor.getString(0) : null;
-        }
-        catch (Exception e) { return null; }
-    }
-
     private static String safeName(String value) {
         if (value == null) return null;
         String name = value.replace("/", "_").replace("\\", "_").trim();
@@ -123,14 +112,6 @@ public final class GameImportManager {
             return Short.reverseBytes(input.readShort()) == (short)0x8664;
         }
         catch (Exception e) { return false; }
-    }
-
-    private static File chooseExecutable(List<File> candidates) {
-        for (File file : candidates) {
-            String name = file.getName().toLowerCase();
-            if (name.contains("aoe") || name.contains("ageofempires") || name.contains("age_of_empires")) return file;
-        }
-        return null;
     }
 
     private static void deleteRecursively(File file) {
