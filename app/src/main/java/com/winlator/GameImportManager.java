@@ -51,6 +51,7 @@ public final class GameImportManager {
             findX64Executables(target, candidates);
             if (candidates.isEmpty()) throw new IllegalStateException("The selected folder was copied, but no 64-bit Windows executable was found. Select the actual game installation folder.");
             File chosen = chooseExecutable(candidates);
+            if (chosen == null) throw new IllegalStateException("64-bit Windows executables were found, but none could be identified confidently as the Age of Empires III launcher. Import was rolled back.");
             return new Result(target, chosen);
         }
         catch (Exception e) {
@@ -129,7 +130,7 @@ public final class GameImportManager {
             String name = file.getName().toLowerCase();
             if (name.contains("aoe") || name.contains("ageofempires") || name.contains("age_of_empires")) return file;
         }
-        return candidates.get(0);
+        return null;
     }
 
     private static void deleteRecursively(File file) {
