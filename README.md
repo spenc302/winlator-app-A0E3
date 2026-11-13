@@ -9,7 +9,10 @@ The initial target is **Age of Empires III: Definitive Edition** on compatible A
 - Winlator 11.2 application source is the runtime foundation.
 - The A0E3 game-library home screen is integrated into the Android app.
 - Containers, graphics settings, and input controls route to existing Winlator screens.
-- Game-folder selection currently stores a user-selected folder URI. A complete import pipeline, executable validation, and tested launch profile are still pending.
+- The user can select an existing game folder through Android's Storage Access Framework.
+- The importer copies the selected folder into a chosen Winlator container and scans Windows executables for 64-bit PE architecture.
+- The detected executable is passed to Winlator's existing launch activity.
+- This is an initial import/launch path. It does not yet verify all game dependencies, Steam authentication, graphics compatibility, or successful gameplay.
 - No proprietary game files are included or downloaded by this project.
 - Age of Empires III: Definitive Edition compatibility and performance have not yet been verified on-device.
 
@@ -19,5 +22,5 @@ The Android Gradle project is in `app/`. See the upstream Winlator build documen
 
 ## Runtime acknowledgements
 
-A0E3 builds on Winlator and its upstream components. See the source history and upstream project for the full credits and third-party license information:
+A0E3 builds on Winlator and its upstream components. See the upstream project for full credits and third-party license information:
 https://github.com/brunodev85/winlator
