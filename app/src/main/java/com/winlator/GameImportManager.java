@@ -114,6 +114,10 @@ public final class GameImportManager {
         catch (Exception e) { return false; }
     }
 
+    public static void discardImport(Result result) {
+        if (result != null && result.installDirectory != null) deleteRecursively(result.installDirectory);
+    }
+
     private static void deleteRecursively(File file) {
         File[] children = file.listFiles();
         if (children != null) for (File child : children) deleteRecursively(child);
