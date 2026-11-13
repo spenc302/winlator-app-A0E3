@@ -2,12 +2,18 @@ package com.winlator;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.ProgressDialog;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.provider.DocumentsContract;
 import android.widget.Toast;
+
+import androidx.appcompat.app.AlertDialog;
+
+import com.winlator.container.Container;
+import com.winlator.container.ContainerManager;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
@@ -127,7 +133,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 final int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
                 getContentResolver().takePersistableUriPermission(treeUri, flags);
                 preferences.edit().putString("aoe3_game_folder_uri", treeUri.toString()).apply();
-                Toast.makeText(this, "Game folder saved. Import and executable validation are the next integration step.", Toast.LENGTH_LONG).show();
+                chooseImportContainer(treeUri);
             }
         }
     }
@@ -163,6 +169,67 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
             Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
         startActivityForResult(intent, PICK_GAME_FOLDER_REQUEST_CODE);
+    }
+
+    private void chooseImportContainer(Uri treeUri) {
+        ContainerManager manager = new ContainerManager(this);
+        ArrayList<Container> containers = manager.getContainers();
+        if (containers.isEmpty()) {
+            Toast.makeText(this, "Create a Winlator container first, then select the game folder again.", Toast.LENGTH_LONG).show();
+            showFragment(new ContainersFragment());
+            return;
+        }
+        String[] names = new String[containers.size()];
+        for (int i = 0; i < containers.size(); i++) names[i] = containers.get(i).getName();
+        new AlertDialog.Builder(this)
+            .setTitle("Import game into container")
+            .setItems(names, (dialog, which) -> importGame(treeUri, containers.get(which)))
+            .setNegativeButton("Cancel", null)
+            .show();
+    }
+
+    private void importGame(Uri treeUri, Container container) {
+        ProgressDialog progress = new ProgressDialog(this);
+        progress.setTitle("Importing Age of Empires III");
+        progress.setMessage("Copying game files into " + container.getName() + "...");
+        progress.setIndeterminate(true);
+        progress.setCancelable(false);
+        progress.show();
+        new Thread(() -> {
+            try {
+                GameImportManager.Result result = GameImportManager.importGame(this, treeUri, container);
+                runOnUiThread(() -> {
+                    progress.dismiss();
+                    preferences.edit()
+                        .putInt("aoe3_container_id", container.id)
+                        .putString("aoe3_executable_path", result.executable.getAbsolutePath())
+                        .putString("aoe3_install_path", result.installDirectory.getAbsolutePath())
+                        .apply();
+                    Toast.makeText(this, "Import complete. Found 64-bit executable: " + result.executable.getName(), Toast.LENGTH_LONG).show();
+                    showFragment(new Aoe3HomeFragment());
+                });
+            }
+            catch (Exception e) {
+                runOnUiThread(() -> {
+                    progress.dismiss();
+                    Toast.makeText(this, "Import failed: " + e.getMessage(), Toast.LENGTH_LONG).show();
+                });
+            }
+        }).start();
+    }
+
+    @Override
+    public void onLaunchGame() {
+        int containerId = preferences.getInt("aoe3_container_id", 0);
+        String executable = preferences.getString("aoe3_executable_path", null);
+        if (containerId <= 0 || executable == null || !new java.io.File(executable).isFile()) {
+            Toast.makeText(this, "Import and validate the game folder before launching.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        Intent intent = new Intent(this, XServerDisplayActivity.class);
+        intent.putExtra("container_id", containerId);
+        intent.putExtra("exec_path", executable);
+        startActivity(intent);
     }
 
     @Override
