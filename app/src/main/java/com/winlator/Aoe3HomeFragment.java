@@ -1,6 +1,7 @@
 package com.winlator;
 
 import android.content.Context;
+import android.content.SharedPreferences;
 import android.graphics.Typeface;
 import android.os.Bundle;
 import android.view.Gravity;
@@ -13,6 +14,7 @@ import android.widget.TextView;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
+import androidx.preference.PreferenceManager;
 
 import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
@@ -27,6 +29,7 @@ import com.google.android.material.card.MaterialCardView;
 public final class Aoe3HomeFragment extends Fragment {
     public interface HostActions {
         void onChooseGameFolder();
+        void onLaunchGame();
         void onOpenContainers();
         void onOpenGraphicsSettings();
         void onOpenInputSettings();
@@ -89,7 +92,11 @@ public final class Aoe3HomeFragment extends Fragment {
         TextView edition = text(context, "DEFINITIVE EDITION", 12, 0xFFB7C1D1, true);
         gameContent.addView(edition);
 
-        TextView status = text(context, "Not installed yet", 13, 0xFFFFD18A, true);
+        SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
+        String executablePath = prefs.getString("aoe3_executable_path", null);
+        boolean imported = executablePath != null && new java.io.File(executablePath).isFile();
+        TextView status = text(context, imported ? "Imported · 64-bit executable detected" : "Not installed yet", 13,
+            imported ? 0xFF9FE0B0 : 0xFFFFD18A, true);
         LinearLayout.LayoutParams statusParams = params(-1, -2);
         statusParams.topMargin = dp(context, 14);
         gameContent.addView(status, statusParams);
@@ -109,6 +116,16 @@ public final class Aoe3HomeFragment extends Fragment {
         LinearLayout.LayoutParams chooseParams = params(-1, -2);
         chooseParams.topMargin = dp(context, 16);
         gameContent.addView(choose, chooseParams);
+
+        MaterialButton launch = new MaterialButton(context);
+        launch.setText("LAUNCH AGE OF EMPIRES III");
+        launch.setEnabled(imported);
+        launch.setOnClickListener(v -> {
+            if (actions != null) actions.onLaunchGame();
+        });
+        LinearLayout.LayoutParams launchParams = params(-1, -2);
+        launchParams.topMargin = dp(context, 8);
+        gameContent.addView(launch, launchParams);
         page.addView(gameCard, params(-1, -2));
 
         TextView setupTitle = text(context, "SETUP & CONTROLS", 12, 0xFF8EA5C8, true);
@@ -132,7 +149,9 @@ public final class Aoe3HomeFragment extends Fragment {
             params(-1, -2));
 
         TextView footer = text(context,
-            "The game launcher will become available after folder import, executable detection and a tested game profile are connected.",
+            imported
+                ? "The game files are imported and a 64-bit Windows executable was detected. Compatibility and performance are not yet verified."
+                : "The launcher unlocks after importing the game folder and detecting a 64-bit Windows executable.",
             12, 0xFF8995A8, false);
         LinearLayout.LayoutParams footerParams = params(-1, -2);
         footerParams.topMargin = dp(context, 18);
