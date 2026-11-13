@@ -1,22 +1,23 @@
-<p align="center">
-	<img src="logo.png" width="376" height="128" alt="Winlator Logo" />
-</p>
+# A0E3
 
-# Winlator
+A game-focused Android launcher built on the Winlator 11.2 application and runtime.
 
-Winlator is an Android application that lets you to run Windows (x86_64) applications with Wine and Box86/Box64.<br>
-This repository stores the latest updates for the Winlator app source.<br>
-For more information and releases, please visit the main repository: https://github.com/brunodev85/winlator
+The initial target is **Age of Empires III: Definitive Edition** on compatible Android devices. A0E3 reuses Winlator's existing Wine, Box64, graphics-driver, container, and input systems rather than introducing a separate Windows compatibility runtime.
 
-# Credits and Third-party apps
+## Project status
 
-- GLIBC Patches by [Termux Pacman](https://github.com/termux-pacman/glibc-packages)
-- Wine ([winehq.org](https://www.winehq.org/))
-- Box86/Box64 by [ptitseb](https://github.com/ptitSeb)
-- Mesa (Turnip/Zink/VirGL) ([mesa3d.org](https://www.mesa3d.org))
-- DXVK ([github.com/doitsujin/dxvk](https://github.com/doitsujin/dxvk))
-- VKD3D ([gitlab.winehq.org/wine/vkd3d](https://gitlab.winehq.org/wine/vkd3d))
-- CNC DDraw ([github.com/FunkyFr3sh/cnc-ddraw](https://github.com/FunkyFr3sh/cnc-ddraw))
+- Winlator 11.2 application source is the runtime foundation.
+- The A0E3 game-library home screen is integrated into the Android app.
+- Containers, graphics settings, and input controls route to existing Winlator screens.
+- Game-folder selection currently stores a user-selected folder URI. A complete import pipeline, executable validation, and tested launch profile are still pending.
+- No proprietary game files are included or downloaded by this project.
+- Age of Empires III: Definitive Edition compatibility and performance have not yet been verified on-device.
 
-Special thanks to all the developers involved in these projects.<br>
-Thank you to all the people who believe in this project.
+## Build
+
+The Android Gradle project is in `app/`. See the upstream Winlator build documentation and preserve all third-party license notices when modifying or redistributing this source.
+
+## Runtime acknowledgements
+
+A0E3 builds on Winlator and its upstream components. See the source history and upstream project for the full credits and third-party license information:
+https://github.com/brunodev85/winlator
