@@ -6,6 +6,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.provider.DocumentsContract;
+import android.widget.Toast;
 import android.content.res.Configuration;
 import android.net.Uri;
 import android.os.Bundle;
@@ -32,13 +34,14 @@ import com.winlator.core.LocaleHelper;
 import com.winlator.core.PreloaderDialog;
 import com.winlator.xenvironment.RootFSInstaller;
 
-public class MainActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener {
+public class MainActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener, Aoe3HomeFragment.HostActions {
     public static final boolean DEBUG_MODE = false; // FIXME change to false
     public static final @IntRange(from = 1, to = 19) byte CONTAINER_PATTERN_COMPRESSION_LEVEL = 9;
     public static final byte PERMISSION_WRITE_EXTERNAL_STORAGE_REQUEST_CODE = 1;
     public static final byte OPEN_FILE_REQUEST_CODE = 2;
     public static final byte EDIT_INPUT_CONTROLS_REQUEST_CODE = 3;
     public static final byte OPEN_DIRECTORY_REQUEST_CODE = 4;
+    private static final int PICK_GAME_FOLDER_REQUEST_CODE = 5;
     private DrawerLayout drawerLayout;
     public final PreloaderDialog preloaderDialog = new PreloaderDialog(this);
     private boolean editInputControls = false;
@@ -72,13 +75,17 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             navigationView.setCheckedItem(R.id.menu_item_input_controls);
         }
         else {
-            boolean showShortcutsFirst = preferences.getBoolean("show_shortcuts_first", false);
             int selectedMenuItemId = intent.getIntExtra("selected_menu_item_id", 0);
-            int menuItemId = selectedMenuItemId > 0 ? selectedMenuItemId : (showShortcutsFirst ? R.id.menu_item_shortcuts : R.id.menu_item_containers);
-
             actionBar.setHomeAsUpIndicator(R.drawable.icon_action_bar_menu);
-            onNavigationItemSelected(navigationView.getMenu().findItem(menuItemId));
-            navigationView.setCheckedItem(menuItemId);
+
+            if (selectedMenuItemId > 0) {
+                onNavigationItemSelected(navigationView.getMenu().findItem(selectedMenuItemId));
+                navigationView.setCheckedItem(selectedMenuItemId);
+            }
+            else {
+                showFragment(new Aoe3HomeFragment());
+            }
+
             if (!requestAppPermissions()) RootFSInstaller.installIfNeeded(this);
 
             int containerId = intent.getIntExtra("container_id", 0);
@@ -114,6 +121,15 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 openFileCallback = null;
             }
         }
+        else if (requestCode == PICK_GAME_FOLDER_REQUEST_CODE && resultCode == Activity.RESULT_OK && data != null) {
+            Uri treeUri = data.getData();
+            if (treeUri != null) {
+                final int flags = data.getFlags() & (Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+                getContentResolver().takePersistableUriPermission(treeUri, flags);
+                preferences.edit().putString("aoe3_game_folder_uri", treeUri.toString()).apply();
+                Toast.makeText(this, "Game folder saved. Import and executable validation are the next integration step.", Toast.LENGTH_LONG).show();
+            }
+        }
     }
 
     @Override
@@ -137,7 +153,31 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             }
         }
 
+        showFragment(new Aoe3HomeFragment());
+    }
+
+
+    @Override
+    public void onChooseGameFolder() {
+        Intent intent = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
+        intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION |
+            Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
+        startActivityForResult(intent, PICK_GAME_FOLDER_REQUEST_CODE);
+    }
+
+    @Override
+    public void onOpenContainers() {
         showFragment(new ContainersFragment());
+    }
+
+    @Override
+    public void onOpenGraphicsSettings() {
+        showFragment(new SettingsFragment());
+    }
+
+    @Override
+    public void onOpenInputSettings() {
+        showFragment(new InputControlsFragment(selectedProfileId));
     }
 
     public void setOpenFileCallback(Callback<Uri> openFileCallback) {
