@@ -18,7 +18,7 @@ import com.google.android.material.button.MaterialButton;
 import com.google.android.material.card.MaterialCardView;
 
 /**
- * First screen of the Octo86 game-focused shell.
+ * First screen of the A0E3 game-focused shell.
  *
  * This fragment intentionally delegates operations to the host activity:
  * game-folder import and container creation must use Winlator's own storage
@@ -61,7 +61,7 @@ public final class Aoe3HomeFragment extends Fragment {
         page.setPadding(pad, pad, pad, pad);
         scroll.addView(page);
 
-        TextView eyebrow = text(context, "OCTO86  /  GAME LIBRARY", 12, 0xFF8EA5C8, true);
+        TextView eyebrow = text(context, "A0E3  /  GAME LIBRARY", 12, 0xFF8EA5C8, true);
         page.addView(eyebrow);
 
         TextView heading = text(context, "Your games.\nOne place.", 30, 0xFFF4F6FA, true);
