@@ -40,6 +40,8 @@ import com.winlator.core.LocaleHelper;
 import com.winlator.core.PreloaderDialog;
 import com.winlator.xenvironment.RootFSInstaller;
 
+import java.util.ArrayList;
+
 public class MainActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener, Aoe3HomeFragment.HostActions {
     public static final boolean DEBUG_MODE = false; // FIXME change to false
     public static final @IntRange(from = 1, to = 19) byte CONTAINER_PATTERN_COMPRESSION_LEVEL = 9;
