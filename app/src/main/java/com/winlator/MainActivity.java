@@ -234,9 +234,11 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 Toast.makeText(this, "Game executable selected: " + executable.getName(), Toast.LENGTH_LONG).show();
                 showFragment(new Aoe3HomeFragment());
             })
-            .setNegativeButton("Cancel", null)
+            .setCancelable(false)
+            .setNegativeButton("Discard import", (dialog, which) -> GameImportManager.discardImport(result))
             .show();
     }
+
     @Override
     public void onLaunchGame() {
         int containerId = preferences.getInt("aoe3_container_id", 0);
