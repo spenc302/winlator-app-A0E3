@@ -54,6 +54,9 @@ jobs:
           test -f app/src/main/java/com/winlator/Aoe3HomeFragment.java
           test -f app/src/main/java/com/winlator/GameImportManager.java
           grep -q "Aoe3HomeFragment" app/src/main/java/com/winlator/MainActivity.java
+          grep -q "ShortcutsFragment" app/src/main/java/com/winlator/MainActivity.java
+          grep -q "isInstalling" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
+          grep -q "opt/wine/bin/wine" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
           grep -q 'name="app_name">A0E3<' app/src/main/res/values/strings.xml
 
       - name: Build ARM64 debug APK
