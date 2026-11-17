@@ -44,22 +44,24 @@ public final class GameImportManager {
         if (target.exists()) throw new IllegalStateException("An imported game folder already exists in this container. The previous copy was kept; remove it from the container's Documents/A0E3 folder before importing again.");
         if (!target.mkdirs()) throw new IllegalStateException("Unable to create the destination folder in the selected container.");
 
+        // Collect executable paths while copying from the SAF provider. This avoids
+        // relying on a second filesystem traversal, which can return incomplete results
+        // on some Android storage/container layouts after very large imports.
+        List<File> candidates = new ArrayList<>();
         try {
-            copyDocumentTree(context, treeUri, rootId, target, 0);
+            copyDocumentTree(context, treeUri, rootId, target, 0, candidates);
         }
         catch (Exception e) {
             deleteRecursively(target);
             throw e;
         }
 
-        // Do not reject or delete a complete import merely because the executable scan
-        // did not recognize a 64-bit PE. Show every .exe so the user can inspect it.
-        List<File> candidates = new ArrayList<>();
-        findExecutables(target, candidates);
+        // Keep a filesystem fallback for providers or unusual directory layouts.
+        if (candidates.isEmpty()) findExecutables(target, candidates);
         return new Result(target, candidates);
     }
 
-    private static void copyDocumentTree(Context context, Uri treeUri, String parentId, File destination, int depth) throws Exception {
+    private static void copyDocumentTree(Context context, Uri treeUri, String parentId, File destination, int depth, List<File> executables) throws Exception {
         if (depth > MAX_DEPTH) throw new IllegalStateException("The selected folder is nested too deeply to import safely.");
         ContentResolver resolver = context.getContentResolver();
         Uri childrenUri = DocumentsContract.buildChildDocumentsUriUsingTree(treeUri, parentId);
@@ -73,7 +75,7 @@ public final class GameImportManager {
                 File output = new File(destination, name);
                 if (DocumentsContract.Document.MIME_TYPE_DIR.equals(mime)) {
                     if (!output.mkdirs() && !output.isDirectory()) throw new IllegalStateException("Unable to create folder: " + name);
-                    copyDocumentTree(context, treeUri, documentId, output, depth + 1);
+                    copyDocumentTree(context, treeUri, documentId, output, depth + 1, executables);
                 }
                 else {
                     Uri fileUri = DocumentsContract.buildDocumentUriUsingTree(treeUri, documentId);
@@ -83,6 +85,9 @@ public final class GameImportManager {
                         byte[] buffer = new byte[1024 * 1024];
                         int count;
                         while ((count = input.read(buffer)) != -1) outputStream.write(buffer, 0, count);
+                    }
+                    if (output.isFile() && output.getName().toLowerCase(Locale.ROOT).endsWith(".exe")) {
+                        executables.add(output);
                     }
                 }
             }
