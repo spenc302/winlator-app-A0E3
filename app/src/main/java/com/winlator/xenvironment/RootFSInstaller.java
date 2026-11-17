@@ -72,8 +72,14 @@ public abstract class RootFSInstaller {
 
                 if (success) {
                     rootFS.createRFSVersionFile(LATEST_VERSION);
-                    SettingsFragment.resetPreferenceVersions(activity);
-                    resetContainerRFSVersions(activity);
+                    if (!rootFS.isValid() || rootFS.getVersion() < LATEST_VERSION) {
+                        success = false;
+                        failure = "RootFS extracted, but its version marker could not be written.";
+                    }
+                    else {
+                        SettingsFragment.resetPreferenceVersions(activity);
+                        resetContainerRFSVersions(activity);
+                    }
                 }
                 else if (failure == null) {
                     failure = "The RootFS archive could not be extracted. Check that the app has enough free storage and reinstall the system files.";
