@@ -32,6 +32,7 @@ import com.winlator.contentdialog.ContentDialog;
 import com.winlator.contentdialog.StorageInfoDialog;
 import com.winlator.core.PreloaderDialog;
 import com.winlator.xenvironment.RootFS;
+import com.winlator.xenvironment.RootFSInstaller;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -75,7 +76,14 @@ public class ContainersFragment extends Fragment {
     private void loadContainersList() {
         ArrayList<Container> containers = manager.getContainers();
         recyclerView.setAdapter(new ContainersAdapter(containers));
-        if (containers.isEmpty()) emptyTextView.setVisibility(View.VISIBLE);
+        if (containers.isEmpty()) {
+            emptyTextView.setVisibility(View.VISIBLE);
+            if (!RootFS.find(getContext()).isValid()) {
+                emptyTextView.setText(RootFSInstaller.isInstalling()
+                    ? "Winlator is installing its system files. Keep the app open until installation finishes."
+                    : "Winlator system files are not installed. Tap + to retry installation.");
+            }
+        }
     }
 
     @Override
@@ -86,7 +94,16 @@ public class ContainersFragment extends Fragment {
     @Override
     public boolean onOptionsItemSelected(MenuItem menuItem) {
         if (menuItem.getItemId() == R.id.menu_item_add) {
-            if (!RootFS.find(getContext()).isValid()) return false;
+            if (!RootFS.find(getContext()).isValid()) {
+                if (RootFSInstaller.isInstalling()) {
+                    android.widget.Toast.makeText(getContext(), "Winlator is still installing its system files. Please wait.", android.widget.Toast.LENGTH_LONG).show();
+                }
+                else {
+                    android.widget.Toast.makeText(getContext(), "Winlator system files are missing. Retrying installation now.", android.widget.Toast.LENGTH_LONG).show();
+                    RootFSInstaller.install((MainActivity)getActivity());
+                }
+                return true;
+            }
             FragmentManager fragmentManager = getParentFragmentManager();
             fragmentManager.beginTransaction()
                 .addToBackStack(null)
