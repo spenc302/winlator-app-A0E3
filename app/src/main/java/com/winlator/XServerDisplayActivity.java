@@ -556,7 +556,16 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         guestProgramLauncherComponent.setEnvVars(envVars);
-        guestProgramLauncherComponent.setTerminationCallback((status) -> exit());
+        guestProgramLauncherComponent.setTerminationCallback((status) -> {
+            Intent launchIntent = getIntent();
+            if (launchIntent.getBooleanExtra("mark_aoe3_vcruntime_installed", false) && (status == 0 || status == 3010)) {
+                preferences.edit().putBoolean("aoe3_vcruntime_installed", true).putInt("aoe3_vcruntime_install_exit", status).apply();
+            }
+            else if (launchIntent.getBooleanExtra("mark_aoe3_vcruntime_installed", false)) {
+                preferences.edit().putInt("aoe3_vcruntime_install_exit", status).apply();
+            }
+            exit();
+        });
         environment.addComponent(guestProgramLauncherComponent);
 
         if (isGenerateWineprefix()) {
@@ -970,6 +979,8 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
             Intent intent = getIntent();
             if (intent.hasExtra("exec_path")) {
                 execPath = WineUtils.unixToDOSPath(intent.getStringExtra("exec_path"), container);
+                execArgs = intent.getStringExtra("exec_args");
+                execArgs = execArgs != null && !execArgs.isEmpty() ? " " + execArgs : "";
 
                 if (execPath.endsWith(".lnk")) {
                     cmdArgs = "\""+execPath+"\"";
