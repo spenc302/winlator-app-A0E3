@@ -109,6 +109,7 @@
     <string name="directx" translatable="false">DirectX</string>
     <string name="vcrun2005" translatable="false">Visual C++ 2005</string>
     <string name="vcrun2010" translatable="false">Visual C++ 2010</string>
+    <string name="vcrun2022" translatable="false">Visual C++ 2015–2022</string>
     <string name="wmdecoder" translatable="false">Windows Media Decoder</string>
     <string name="settings">Settings</string>
     <string name="exec_arguments" translatable="false">Exec Arguments</string>
