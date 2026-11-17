@@ -91,7 +91,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 navigationView.setCheckedItem(selectedMenuItemId);
             }
             else {
-                showFragment(new Aoe3HomeFragment());
+                showFragment(new ShortcutsFragment());
             }
 
             if (!requestAppPermissions()) RootFSInstaller.installIfNeeded(this);
@@ -161,7 +161,7 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             }
         }
 
-        showFragment(new Aoe3HomeFragment());
+        showFragment(new ShortcutsFragment());
     }
 
 
@@ -321,6 +321,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         }
 
         switch (item.getItemId()) {
+            case R.id.menu_item_aoe3:
+                showFragment(new Aoe3HomeFragment());
+                break;
             case R.id.menu_item_shortcuts:
                 preferences.edit().putBoolean("show_shortcuts_first", true).apply();
                 showFragment(new ShortcutsFragment());
