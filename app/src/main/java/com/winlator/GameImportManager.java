@@ -14,8 +14,9 @@ import java.io.InputStream;
 import java.io.RandomAccessFile;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
-/** Copies a user-selected game directory into a Winlator container and identifies x86-64 PE executables. */
+/** Copies a user-selected game directory into a Winlator container and identifies Windows executables. */
 public final class GameImportManager {
     private static final int MAX_DEPTH = 32;
     private static final String[] COLUMNS = {
@@ -40,20 +41,22 @@ public final class GameImportManager {
         if (container == null || container.getUserDir() == null) throw new IllegalStateException("The selected Winlator container is unavailable.");
 
         File target = new File(container.getUserDir(), "Documents/A0E3/Age of Empires III Definitive Edition");
-        if (target.exists()) throw new IllegalStateException("An imported game folder already exists in this container. Remove it before importing again.");
+        if (target.exists()) throw new IllegalStateException("An imported game folder already exists in this container. The previous copy was kept; remove it from the container's Documents/A0E3 folder before importing again.");
         if (!target.mkdirs()) throw new IllegalStateException("Unable to create the destination folder in the selected container.");
 
         try {
             copyDocumentTree(context, treeUri, rootId, target, 0);
-            List<File> candidates = new ArrayList<>();
-            findX64Executables(target, candidates);
-            if (candidates.isEmpty()) throw new IllegalStateException("The selected folder was copied, but no 64-bit Windows executable was found. Select the actual game installation folder.");
-            return new Result(target, candidates);
         }
         catch (Exception e) {
             deleteRecursively(target);
             throw e;
         }
+
+        // Do not reject or delete a complete import merely because the executable scan
+        // did not recognize a 64-bit PE. Show every .exe so the user can inspect it.
+        List<File> candidates = new ArrayList<>();
+        findExecutables(target, candidates);
+        return new Result(target, candidates);
     }
 
     private static void copyDocumentTree(Context context, Uri treeUri, String parentId, File destination, int depth) throws Exception {
@@ -88,30 +91,38 @@ public final class GameImportManager {
 
     private static String safeName(String value) {
         if (value == null) return null;
-        String name = value.replace("/", "_").replace("\\", "_").trim();
+        String name = value.replace("/", "_").replace("\\\\", "_").trim();
         return name.isEmpty() ? null : name;
     }
 
-    private static void findX64Executables(File directory, List<File> results) {
+    private static void findExecutables(File directory, List<File> results) {
         File[] files = directory.listFiles();
         if (files == null) return;
         for (File file : files) {
-            if (file.isDirectory()) findX64Executables(file, results);
-            else if (file.isFile() && file.getName().toLowerCase().endsWith(".exe") && isX64PE(file)) results.add(file);
+            if (file.isDirectory()) findExecutables(file, results);
+            else if (file.isFile() && file.getName().toLowerCase(Locale.ROOT).endsWith(".exe")) results.add(file);
         }
     }
 
-    private static boolean isX64PE(File file) {
+    /** Returns x64, x86, ARM64, ARM, or Unknown from the Windows PE machine field. */
+    public static String getExecutableArchitecture(File file) {
         try (RandomAccessFile input = new RandomAccessFile(file, "r")) {
-            if (input.length() < 64 || input.readUnsignedByte() != 'M' || input.readUnsignedByte() != 'Z') return false;
+            if (input.length() < 64 || input.readUnsignedByte() != 'M' || input.readUnsignedByte() != 'Z') return "Unknown";
             input.seek(0x3c);
             long peOffset = Integer.toUnsignedLong(Integer.reverseBytes(input.readInt()));
-            if (peOffset < 64 || peOffset + 6 > input.length()) return false;
+            if (peOffset < 64 || peOffset + 6 > input.length()) return "Unknown";
             input.seek(peOffset);
-            if (input.readUnsignedByte() != 'P' || input.readUnsignedByte() != 'E' || input.readUnsignedByte() != 0 || input.readUnsignedByte() != 0) return false;
-            return Short.reverseBytes(input.readShort()) == (short)0x8664;
+            if (input.readUnsignedByte() != 'P' || input.readUnsignedByte() != 'E' || input.readUnsignedByte() != 0 || input.readUnsignedByte() != 0) return "Unknown";
+            int machine = Short.toUnsignedInt(Short.reverseBytes(input.readShort()));
+            switch (machine) {
+                case 0x8664: return "x64";
+                case 0x014c: return "x86";
+                case 0xAA64: return "ARM64";
+                case 0x01c4: return "ARM";
+                default: return "Unknown";
+            }
         }
-        catch (Exception e) { return false; }
+        catch (Exception e) { return "Unknown"; }
     }
 
     public static void discardImport(Result result) {
