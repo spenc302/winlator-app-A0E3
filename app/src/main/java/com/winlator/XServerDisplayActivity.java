@@ -905,12 +905,15 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
 
         try {
             JSONObject wincomponentsJSONObject = new JSONObject(FileUtils.readString(this, "wincomponents/wincomponents.json"));
-            Iterator<String[]> oldWinComponentsIter = new KeyValueSet(container.getExtra("wincomponents", Container.FALLBACK_WINCOMPONENTS)).iterator();
+            KeyValueSet oldWinComponents = new KeyValueSet(container.getExtra("wincomponents", Container.FALLBACK_WINCOMPONENTS));
             ArrayList<String> builtinDlls = new ArrayList<>();
 
             for (String[] wincomponent : new KeyValueSet(wincomponents)) {
-                if (wincomponent[1].equals(oldWinComponentsIter.next()[1])) continue;
                 String identifier = wincomponent[0];
+                // Match by component name rather than iterator position so newly
+                // added components are safely applied to containers created by
+                // older app versions.
+                if (wincomponent[1].equals(oldWinComponents.get(identifier, "0"))) continue;
                 boolean useNative = wincomponent[1].equals("1");
 
                 if (useNative) {
