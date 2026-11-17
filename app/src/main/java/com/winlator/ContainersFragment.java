@@ -73,7 +73,14 @@ public class ContainersFragment extends Fragment {
         Context context = recyclerView.getContext();
         emptyTextView = frameLayout.findViewById(R.id.TVEmptyText);
         setupContainerButton = frameLayout.findViewById(R.id.BTSetupContainer);
-        setupContainerButton.setOnClickListener(v -> createA0E3Container());
+        setupContainerButton.setOnClickListener(v -> {
+            if (RootFS.find(getContext()).isValid()) createA0E3Container();
+            else if (!RootFSInstaller.isInstalling()) {
+                setupContainerButton.setEnabled(false);
+                setupContainerButton.setText("Installing system files…");
+                RootFSInstaller.install((MainActivity)getActivity(), this::loadContainersList);
+            }
+        });
         recyclerView.setLayoutManager(new LinearLayoutManager(context));
 
         DividerItemDecoration itemDecoration = new DividerItemDecoration(recyclerView.getContext(), DividerItemDecoration.VERTICAL);
@@ -93,17 +100,23 @@ public class ContainersFragment extends Fragment {
         recyclerView.setAdapter(new ContainersAdapter(containers));
         boolean empty = containers.isEmpty();
         emptyTextView.setVisibility(empty ? View.VISIBLE : View.GONE);
-        setupContainerButton.setVisibility(View.GONE);
+        setupContainerButton.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty) {
             boolean ready = RootFS.find(getContext()).isValid();
             if (ready) {
                 emptyTextView.setText("Winlator is ready. Create an A0E3 container to install and run Age of Empires III.");
-                setupContainerButton.setVisibility(View.VISIBLE);
+                setupContainerButton.setText("Create A0E3 Container");
+                setupContainerButton.setEnabled(true);
+            }
+            else if (RootFSInstaller.isInstalling()) {
+                emptyTextView.setText("Winlator is installing its system files. Keep the app open until installation finishes.");
+                setupContainerButton.setText("Installing system files…");
+                setupContainerButton.setEnabled(false);
             }
             else {
-                emptyTextView.setText(RootFSInstaller.isInstalling()
-                    ? "Winlator is installing its system files. Keep the app open until installation finishes."
-                    : "Winlator's Wine system files are missing or incomplete. Tap + to retry installation.");
+                emptyTextView.setText("Winlator's Wine system files are missing or incomplete. Install them before creating your game container.");
+                setupContainerButton.setText("Install / Repair Winlator System");
+                setupContainerButton.setEnabled(true);
             }
         }
     }
