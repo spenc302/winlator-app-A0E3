@@ -12,6 +12,8 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.Button;
+import android.widget.Toast;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
@@ -28,6 +30,10 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.container.Container;
 import com.winlator.container.ContainerManager;
+import com.winlator.container.GraphicsDrivers;
+import com.winlator.core.WineInfo;
+
+import org.json.JSONObject;
 import com.winlator.contentdialog.ContentDialog;
 import com.winlator.contentdialog.StorageInfoDialog;
 import com.winlator.core.PreloaderDialog;
@@ -42,6 +48,7 @@ public class ContainersFragment extends Fragment {
     private TextView emptyTextView;
     private ContainerManager manager;
     private PreloaderDialog preloaderDialog;
+    private Button setupContainerButton;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -65,6 +72,8 @@ public class ContainersFragment extends Fragment {
         recyclerView = frameLayout.findViewById(R.id.RecyclerView);
         Context context = recyclerView.getContext();
         emptyTextView = frameLayout.findViewById(R.id.TVEmptyText);
+        setupContainerButton = frameLayout.findViewById(R.id.BTSetupContainer);
+        setupContainerButton.setOnClickListener(v -> createA0E3Container());
         recyclerView.setLayoutManager(new LinearLayoutManager(context));
 
         DividerItemDecoration itemDecoration = new DividerItemDecoration(recyclerView.getContext(), DividerItemDecoration.VERTICAL);
@@ -73,16 +82,66 @@ public class ContainersFragment extends Fragment {
         return frameLayout;
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (manager != null && recyclerView != null) loadContainersList();
+    }
+
     private void loadContainersList() {
         ArrayList<Container> containers = manager.getContainers();
         recyclerView.setAdapter(new ContainersAdapter(containers));
-        if (containers.isEmpty()) {
-            emptyTextView.setVisibility(View.VISIBLE);
-            if (!RootFS.find(getContext()).isValid()) {
+        boolean empty = containers.isEmpty();
+        emptyTextView.setVisibility(empty ? View.VISIBLE : View.GONE);
+        setupContainerButton.setVisibility(View.GONE);
+        if (empty) {
+            boolean ready = RootFS.find(getContext()).isValid();
+            if (ready) {
+                emptyTextView.setText("Winlator is ready. Create an A0E3 container to install and run Age of Empires III.");
+                setupContainerButton.setVisibility(View.VISIBLE);
+            }
+            else {
                 emptyTextView.setText(RootFSInstaller.isInstalling()
                     ? "Winlator is installing its system files. Keep the app open until installation finishes."
-                    : "Winlator system files are not installed. Tap + to retry installation.");
+                    : "Winlator's Wine system files are missing or incomplete. Tap + to retry installation.");
             }
+        }
+    }
+
+    private void createA0E3Container() {
+        if (!RootFS.find(getContext()).isValid()) {
+            Toast.makeText(getContext(), "Winlator system files are not ready. Use + to retry installation.", Toast.LENGTH_LONG).show();
+            return;
+        }
+
+        setupContainerButton.setEnabled(false);
+        setupContainerButton.setText("Creating container…");
+        try {
+            JSONObject data = new JSONObject();
+            data.put("name", "A0E3 - Age of Empires III");
+            data.put("graphicsDriver", GraphicsDrivers.getDefaultDriver(getContext()));
+            data.put("dxwrapper", Container.DEFAULT_DXWRAPPER);
+            data.put("wineVersion", WineInfo.MAIN_WINE_INFO.identifier());
+            data.put("cpuList", Container.getFallbackCPUList());
+            data.put("cpuListWoW64", Container.getFallbackCPUList());
+
+            manager.createContainerAsync(data, container -> {
+                if (!isAdded()) return;
+                setupContainerButton.setEnabled(true);
+                setupContainerButton.setText("Create A0E3 Container");
+                if (container == null) {
+                    Toast.makeText(getContext(), "Container creation failed. Check that RootFS installed completely, then retry.", Toast.LENGTH_LONG).show();
+                }
+                else {
+                    Toast.makeText(getContext(), "A0E3 container created. You can now import the game from the A0E3 profile.", Toast.LENGTH_LONG).show();
+                }
+                loadContainersList();
+            });
+        }
+        catch (org.json.JSONException e) {
+            setupContainerButton.setEnabled(true);
+            setupContainerButton.setText("Create A0E3 Container");
+            Toast.makeText(getContext(), "Unable to configure the A0E3 container: "+e.getMessage(), Toast.LENGTH_LONG).show();
         }
     }
 
