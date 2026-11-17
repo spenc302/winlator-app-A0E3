@@ -70,8 +70,8 @@ jobs:
           grep -q "Create A0E3 Container" app/src/main/java/com/winlator/ContainersFragment.java
           grep -q "wineExecutable.isFile" app/src/main/java/com/winlator/xenvironment/RootFS.java
           grep -q "opt/wine/bin/wine" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
-          grep -q \"vcrun2022=1\" app/src/main/java/com/winlator/container/Container.java
-          grep -q \"vcrun2022\" app/src/main/assets/wincomponents/wincomponents.json
+          grep -q 'vcrun2022=1' app/src/main/java/com/winlator/container/Container.java
+          grep -q 'vcrun2022' app/src/main/assets/wincomponents/wincomponents.json
           test -f .github/scripts/build-vcrun2022-component.sh
           grep -q 'name="app_name">A0E3<' app/src/main/res/values/strings.xml
 
