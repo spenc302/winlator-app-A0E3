@@ -94,7 +94,9 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 showFragment(new ShortcutsFragment());
             }
 
-            if (!requestAppPermissions()) RootFSInstaller.installIfNeeded(this);
+            requestAppPermissions();
+            // RootFS lives in app-private storage and must not depend on legacy shared-storage permission.
+            RootFSInstaller.installIfNeeded(this);
 
             int containerId = intent.getIntExtra("container_id", 0);
             String startPath = intent.getStringExtra("start_path");
@@ -116,7 +118,10 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             if (grantResults.length > 0 && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
                 RootFSInstaller.installIfNeeded(this);
             }
-            else finish();
+            else {
+                Toast.makeText(this, "Storage permission was not granted. You can still use Android's folder picker to import game files.", Toast.LENGTH_LONG).show();
+                RootFSInstaller.installIfNeeded(this);
+            }
         }
     }
 
