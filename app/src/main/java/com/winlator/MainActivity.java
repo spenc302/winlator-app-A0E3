@@ -223,9 +223,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
         if (result.executables.isEmpty()) {
             new AlertDialog.Builder(this)
                 .setTitle("Game files imported")
-                .setMessage("The folder was copied, but no .exe files were found. The imported files have been kept in the container. Check that you selected the actual Age of Empires III: Definitive Edition installation folder.")
+                .setMessage("The folder was copied, but no .exe files were detected. Your imported files are being kept in the container. You can rescan the existing copy after this screen is closed.")
                 .setPositiveButton("OK", (dialog, which) -> showFragment(new Aoe3HomeFragment()))
-                .setNegativeButton("Discard import", (dialog, which) -> GameImportManager.discardImport(result))
                 .setCancelable(false)
                 .show();
             return;
@@ -238,9 +237,12 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             labels.add("[" + GameImportManager.getExecutableArchitecture(executable) + "] " + relative);
         }
         String[] choices = labels.toArray(new String[0]);
+        // Do not combine AlertDialog.setMessage() with setItems(): on some Android
+        // versions/providers this leaves the dialog showing only its action button.
+        // The title carries the count and the list itself remains the complete,
+        // scrollable selection surface. Never delete a multi-gigabyte import here.
         new AlertDialog.Builder(this)
-            .setTitle("Choose the game executable")
-            .setMessage("All .exe files are listed with their detected Windows architecture. Choose the main Age of Empires III: Definitive Edition game executable (normally x64).")
+            .setTitle("Choose the game executable (" + choices.length + " found)")
             .setItems(choices, (dialog, which) -> {
                 java.io.File executable = result.executables.get(which);
                 preferences.edit()
@@ -251,8 +253,8 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
                 Toast.makeText(this, "Game executable selected: " + executable.getName(), Toast.LENGTH_LONG).show();
                 showFragment(new Aoe3HomeFragment());
             })
-            .setCancelable(false)
-            .setNegativeButton("Discard import", (dialog, which) -> GameImportManager.discardImport(result))
+            .setCancelable(true)
+            .setNegativeButton("Keep imported files", (dialog, which) -> showFragment(new Aoe3HomeFragment()))
             .show();
     }
 
