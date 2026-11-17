@@ -9,6 +9,7 @@ import com.winlator.R;
 import com.winlator.SettingsFragment;
 import com.winlator.container.Container;
 import com.winlator.container.ContainerManager;
+import com.winlator.container.GraphicsDrivers;
 import com.winlator.core.AppUtils;
 import com.winlator.core.DownloadProgressDialog;
 import com.winlator.core.FileUtils;
@@ -18,6 +19,7 @@ import com.winlator.core.WineInfo;
 
 import org.json.JSONArray;
 import org.json.JSONException;
+import org.json.JSONObject;
 import org.json.JSONObject;
 
 import java.io.File;
@@ -50,6 +52,10 @@ public abstract class RootFSInstaller {
     }
 
     public static void install(final MainActivity activity) {
+        install(activity, null);
+    }
+
+    public static void install(final MainActivity activity, final Runnable onComplete) {
         if (!INSTALLING.compareAndSet(false, true)) return;
 
         AppUtils.keepScreenOn(activity);
@@ -97,9 +103,11 @@ public abstract class RootFSInstaller {
                     if (!activity.isFinishing()) {
                         if (installed) {
                             dialog.setProgress(100);
+                            ensureDefaultContainer(activity, onComplete);
                         }
                         else {
                             AppUtils.showToast(activity, "Winlator system installation failed: "+errorMessage);
+                            if (onComplete != null) onComplete.run();
                         }
                     }
                     dialog.close();
@@ -109,9 +117,41 @@ public abstract class RootFSInstaller {
         });
     }
 
+    private static void ensureDefaultContainer(MainActivity activity, Runnable onComplete) {
+        ContainerManager manager = new ContainerManager(activity);
+        if (!manager.getContainers().isEmpty()) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+
+        try {
+            JSONObject data = new JSONObject();
+            data.put("name", "A0E3 - Age of Empires III");
+            data.put("graphicsDriver", GraphicsDrivers.getDefaultDriver(activity));
+            data.put("dxwrapper", Container.DEFAULT_DXWRAPPER);
+            data.put("wineVersion", WineInfo.MAIN_WINE_INFO.identifier());
+            data.put("cpuList", Container.getFallbackCPUList());
+            data.put("cpuListWoW64", Container.getFallbackCPUList());
+            manager.createContainerAsync(data, container -> {
+                if (container == null) {
+                    AppUtils.showToast(activity, "Winlator installed, but the A0E3 container could not be created. Open Containers and retry.");
+                }
+                else {
+                    AppUtils.showToast(activity, "Winlator is ready. Your A0E3 container has been created.");
+                }
+                if (onComplete != null) onComplete.run();
+            });
+        }
+        catch (JSONException error) {
+            AppUtils.showToast(activity, "Winlator installed, but container setup failed: "+error.getMessage());
+            if (onComplete != null) onComplete.run();
+        }
+    }
+
     public static void installIfNeeded(final MainActivity activity) {
         RootFS rootFS = RootFS.find(activity);
         if (!rootFS.isValid() || rootFS.getVersion() < LATEST_VERSION) install(activity);
+        else ensureDefaultContainer(activity, null);
     }
 
     private static void clearOptDir(File optDir) {
