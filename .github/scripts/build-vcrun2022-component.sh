@@ -5,7 +5,7 @@ set -euo pipefail
 # Wine prefix, then package its 64-bit and 32-bit DLLs as a Winlator component.
 sudo dpkg --add-architecture i386
 sudo apt-get update
-sudo apt-get install -y --no-install-recommends wine winetricks cabextract xvfb zstd
+sudo apt-get install -y --no-install-recommends wine wine64 wine32:i386 winetricks cabextract xvfb zstd
 
 export WINEPREFIX="$RUNNER_TEMP/a0e3-vcrun2022-prefix"
 export WINEARCH=win64
