@@ -56,6 +56,8 @@ jobs:
           grep -q "Aoe3HomeFragment" app/src/main/java/com/winlator/MainActivity.java
           grep -q "ShortcutsFragment" app/src/main/java/com/winlator/MainActivity.java
           grep -q "isInstalling" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
+          grep -q "ensureDefaultContainer" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
+          grep -q "Install / Repair Winlator System" app/src/main/java/com/winlator/ContainersFragment.java
           grep -q "Create A0E3 Container" app/src/main/java/com/winlator/ContainersFragment.java
           grep -q "wineExecutable.isFile" app/src/main/java/com/winlator/xenvironment/RootFS.java
           grep -q "opt/wine/bin/wine" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
