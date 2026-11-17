@@ -7,6 +7,7 @@ on:
     paths:
       - app/**
       - .github/workflows/octo86-android-debug.yml
+      - .github/scripts/**
 
 permissions:
   contents: read
@@ -47,6 +48,12 @@ jobs:
           yes | "$SDKMANAGER" --licenses
           "$SDKMANAGER" --install "ndk;24.0.8215888" "cmake;3.22.1"
 
+      - name: Build VC++ 2015-2022 Win Components payload
+        run: |
+          chmod +x .github/scripts/build-vcrun2022-component.sh
+          .github/scripts/build-vcrun2022-component.sh
+          test -s app/src/main/assets/wincomponents/vcrun2022.tzst
+
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
@@ -63,6 +70,9 @@ jobs:
           grep -q "Create A0E3 Container" app/src/main/java/com/winlator/ContainersFragment.java
           grep -q "wineExecutable.isFile" app/src/main/java/com/winlator/xenvironment/RootFS.java
           grep -q "opt/wine/bin/wine" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
+          grep -q \"vcrun2022=1\" app/src/main/java/com/winlator/container/Container.java
+          grep -q \"vcrun2022\" app/src/main/assets/wincomponents/wincomponents.json
+          test -f .github/scripts/build-vcrun2022-component.sh
           grep -q 'name="app_name">A0E3<' app/src/main/res/values/strings.xml
 
       - name: Build ARM64 debug APK
