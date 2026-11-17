@@ -41,6 +41,7 @@ import com.winlator.core.PreloaderDialog;
 import com.winlator.core.HttpUtils;
 import com.winlator.xenvironment.RootFSInstaller;
 
+import java.io.File;
 import java.util.ArrayList;
 
 public class MainActivity extends AppCompatActivity implements NavigationView.OnNavigationItemSelectedListener, Aoe3HomeFragment.HostActions {
