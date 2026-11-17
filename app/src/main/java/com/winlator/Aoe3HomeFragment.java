@@ -3,10 +3,11 @@ package com.winlator;
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Typeface;
+import android.graphics.drawable.GradientDrawable;
 import android.os.Bundle;
-import android.view.Gravity;
 import android.view.View;
 import android.view.ViewGroup;
+import android.widget.Button;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
@@ -16,15 +17,10 @@ import androidx.annotation.Nullable;
 import androidx.fragment.app.Fragment;
 import androidx.preference.PreferenceManager;
 
-import com.google.android.material.button.MaterialButton;
-import com.google.android.material.card.MaterialCardView;
-
 /**
- * First screen of the A0E3 game-focused shell.
- *
- * This fragment intentionally delegates operations to the host activity:
- * game-folder import and container creation must use Winlator's own storage
- * and ContainerManager APIs, not a second parallel runtime.
+ * A0E3 game profile screen. Uses platform/AppCompat widgets only because the
+ * host application intentionally uses an AppCompat theme, not a
+ * Theme.MaterialComponents theme.
  */
 public final class Aoe3HomeFragment extends Fragment {
     public interface HostActions {
@@ -64,8 +60,7 @@ public final class Aoe3HomeFragment extends Fragment {
         page.setPadding(pad, pad, pad, pad);
         scroll.addView(page);
 
-        TextView eyebrow = text(context, "A0E3  /  GAME LIBRARY", 12, 0xFF8EA5C8, true);
-        page.addView(eyebrow);
+        page.addView(text(context, "A0E3  /  GAME LIBRARY", 12, 0xFF8EA5C8, true));
 
         TextView heading = text(context, "Your games.\nOne place.", 30, 0xFFF4F6FA, true);
         LinearLayout.LayoutParams headingParams = params(-1, -2);
@@ -79,23 +74,19 @@ public final class Aoe3HomeFragment extends Fragment {
         introParams.topMargin = dp(context, 8);
         page.addView(intro, introParams);
 
-        MaterialCardView gameCard = card(context);
+        LinearLayout gameCard = card(context);
         LinearLayout gameContent = column(context, dp(context, 18));
         gameCard.addView(gameContent);
 
-        TextView tag = text(context, "PC GAME PROFILE", 11, 0xFF9FB7DA, true);
-        gameContent.addView(tag);
-
-        TextView gameName = text(context, "Age of Empires III", 23, 0xFFFFFFFF, true);
-        gameContent.addView(gameName);
-
-        TextView edition = text(context, "DEFINITIVE EDITION", 12, 0xFFB7C1D1, true);
-        gameContent.addView(edition);
+        gameContent.addView(text(context, "PC GAME PROFILE", 11, 0xFF9FB7DA, true));
+        gameContent.addView(text(context, "Age of Empires III", 23, 0xFFFFFFFF, true));
+        gameContent.addView(text(context, "DEFINITIVE EDITION", 12, 0xFFB7C1D1, true));
 
         SharedPreferences prefs = PreferenceManager.getDefaultSharedPreferences(context);
         String executablePath = prefs.getString("aoe3_executable_path", null);
         boolean imported = executablePath != null && new java.io.File(executablePath).isFile();
-        TextView status = text(context, imported ? "Imported · 64-bit executable detected" : "Not installed yet", 13,
+        TextView status = text(context,
+            imported ? "Imported · 64-bit executable detected" : "Not installed yet", 13,
             imported ? 0xFF9FE0B0 : 0xFFFFD18A, true);
         LinearLayout.LayoutParams statusParams = params(-1, -2);
         statusParams.topMargin = dp(context, 14);
@@ -108,8 +99,7 @@ public final class Aoe3HomeFragment extends Fragment {
         noteParams.topMargin = dp(context, 6);
         gameContent.addView(note, noteParams);
 
-        MaterialButton choose = new MaterialButton(context);
-        choose.setText("SELECT GAME FOLDER");
+        Button choose = actionButton(context, "SELECT GAME FOLDER", true);
         choose.setOnClickListener(v -> {
             if (actions != null) actions.onChooseGameFolder();
         });
@@ -117,9 +107,9 @@ public final class Aoe3HomeFragment extends Fragment {
         chooseParams.topMargin = dp(context, 16);
         gameContent.addView(choose, chooseParams);
 
-        MaterialButton launch = new MaterialButton(context);
-        launch.setText("LAUNCH AGE OF EMPIRES III");
+        Button launch = actionButton(context, "LAUNCH AGE OF EMPIRES III", false);
         launch.setEnabled(imported);
+        launch.setAlpha(imported ? 1.0f : 0.48f);
         launch.setOnClickListener(v -> {
             if (actions != null) actions.onLaunchGame();
         });
@@ -160,16 +150,13 @@ public final class Aoe3HomeFragment extends Fragment {
         return scroll;
     }
 
-    private static MaterialCardView actionCard(Context context, String title, String description,
-                                                 String buttonText, View.OnClickListener listener) {
-        MaterialCardView card = card(context);
+    private static LinearLayout actionCard(Context context, String title, String description,
+                                           String buttonText, View.OnClickListener listener) {
+        LinearLayout card = card(context);
         LinearLayout content = column(context, dp(context, 14));
-        TextView titleView = text(context, title, 18, 0xFFFFFFFF, true);
-        content.addView(titleView);
-        TextView descriptionView = text(context, description, 13, 0xFFB7C1D1, false);
-        content.addView(descriptionView);
-        MaterialButton button = new MaterialButton(context);
-        button.setText(buttonText);
+        content.addView(text(context, title, 18, 0xFFFFFFFF, true));
+        content.addView(text(context, description, 13, 0xFFB7C1D1, false));
+        Button button = actionButton(context, buttonText, false);
         button.setOnClickListener(listener);
         content.addView(button);
         card.addView(content);
@@ -179,17 +166,37 @@ public final class Aoe3HomeFragment extends Fragment {
         return card;
     }
 
-    private static MaterialCardView card(Context context) {
-        MaterialCardView card = new MaterialCardView(context);
-        card.setRadius(dp(context, 18));
-        card.setCardBackgroundColor(0xFF202A39);
-        card.setStrokeColor(0xFF34445B);
-        card.setStrokeWidth(dp(context, 1));
-        card.setUseCompatPadding(true);
+    private static LinearLayout card(Context context) {
+        LinearLayout card = new LinearLayout(context);
+        card.setOrientation(LinearLayout.VERTICAL);
+        card.setBackground(background(0xFF202A39, 0xFF34445B, dp(context, 18), dp(context, 1)));
+        card.setElevation(dp(context, 2));
         LinearLayout.LayoutParams lp = params(-1, -2);
         lp.topMargin = dp(context, 18);
         card.setLayoutParams(lp);
         return card;
+    }
+
+    private static Button actionButton(Context context, String label, boolean primary) {
+        Button button = new Button(context);
+        button.setText(label);
+        button.setTextSize(13);
+        button.setTextColor(0xFFFFFFFF);
+        button.setAllCaps(false);
+        button.setTypeface(Typeface.DEFAULT, Typeface.BOLD);
+        button.setMinHeight(dp(context, 48));
+        button.setPadding(dp(context, 16), dp(context, 8), dp(context, 16), dp(context, 8));
+        button.setBackground(background(primary ? 0xFF1769AA : 0xFF34445B,
+            primary ? 0xFF3987C8 : 0xFF52647A, dp(context, 10), dp(context, 1)));
+        return button;
+    }
+
+    private static GradientDrawable background(int fill, int stroke, int radius, int strokeWidth) {
+        GradientDrawable drawable = new GradientDrawable();
+        drawable.setColor(fill);
+        drawable.setCornerRadius(radius);
+        drawable.setStroke(strokeWidth, stroke);
+        return drawable;
     }
 
     private static LinearLayout column(Context context, int padding) {
