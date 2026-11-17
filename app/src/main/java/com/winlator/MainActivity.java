@@ -38,6 +38,7 @@ import com.winlator.core.AppUtils;
 import com.winlator.core.Callback;
 import com.winlator.core.LocaleHelper;
 import com.winlator.core.PreloaderDialog;
+import com.winlator.core.HttpUtils;
 import com.winlator.xenvironment.RootFSInstaller;
 
 import java.util.ArrayList;
@@ -273,6 +274,51 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
             showFragment(new Aoe3HomeFragment());
             return;
         }
+
+        if (!preferences.getBoolean("aoe3_vcruntime_installed", false)) {
+            new AlertDialog.Builder(this)
+                .setTitle("Install game runtime")
+                .setMessage("Age of Empires III: Definitive Edition requires the Microsoft Visual C++ 2015–2022 runtime. This container currently has only the older VC++ 2010 component enabled. Install Microsoft's official 64-bit runtime into this container before launching?")
+                .setPositiveButton("Install runtime", (dialog, which) -> installAoe3Runtime(container))
+                .setNeutralButton("Try launching anyway", (dialog, which) -> launchAoe3Executable(containerId, executable))
+                .setNegativeButton("Cancel", null)
+                .show();
+            return;
+        }
+
+        launchAoe3Executable(containerId, executable);
+    }
+
+    private void installAoe3Runtime(Container container) {
+        File runtimeDirectory = new File(container.getUserDir(), "Downloads/A0E3-Runtime");
+        if (!runtimeDirectory.isDirectory() && !runtimeDirectory.mkdirs()) {
+            Toast.makeText(this, "Unable to create the runtime installer folder in the container.", Toast.LENGTH_LONG).show();
+            return;
+        }
+        File installer = new File(runtimeDirectory, "vc_redist.x64.exe");
+        if (installer.isFile() && installer.length() > 1024 * 1024) {
+            launchAoe3RuntimeInstaller(container, installer);
+            return;
+        }
+
+        HttpUtils.download(this, "https://aka.ms/vs/17/release/vc_redist.x64.exe", installer, (success) -> {
+            if (success && installer.isFile() && installer.length() > 1024 * 1024) {
+                launchAoe3RuntimeInstaller(container, installer);
+            }
+            else Toast.makeText(this, "Microsoft's VC++ runtime download failed. Your imported game files were not changed.", Toast.LENGTH_LONG).show();
+        });
+    }
+
+    private void launchAoe3RuntimeInstaller(Container container, File installer) {
+        Intent intent = new Intent(this, XServerDisplayActivity.class);
+        intent.putExtra("container_id", container.id);
+        intent.putExtra("exec_path", installer.getAbsolutePath());
+        intent.putExtra("exec_args", "/install /quiet /norestart");
+        intent.putExtra("mark_aoe3_vcruntime_installed", true);
+        startActivity(intent);
+    }
+
+    private void launchAoe3Executable(int containerId, String executable) {
         Intent intent = new Intent(this, XServerDisplayActivity.class);
         intent.putExtra("container_id", containerId);
         intent.putExtra("exec_path", executable);
