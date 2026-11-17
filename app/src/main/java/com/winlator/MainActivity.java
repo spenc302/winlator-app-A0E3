@@ -220,15 +220,27 @@ public class MainActivity extends AppCompatActivity implements NavigationView.On
     }
 
     private void selectGameExecutable(Container container, GameImportManager.Result result) {
+        if (result.executables.isEmpty()) {
+            new AlertDialog.Builder(this)
+                .setTitle("Game files imported")
+                .setMessage("The folder was copied, but no .exe files were found. The imported files have been kept in the container. Check that you selected the actual Age of Empires III: Definitive Edition installation folder.")
+                .setPositiveButton("OK", (dialog, which) -> showFragment(new Aoe3HomeFragment()))
+                .setNegativeButton("Discard import", (dialog, which) -> GameImportManager.discardImport(result))
+                .setCancelable(false)
+                .show();
+            return;
+        }
+
         ArrayList<String> labels = new ArrayList<>();
         for (java.io.File executable : result.executables) {
             String relative = executable.getAbsolutePath().substring(result.installDirectory.getAbsolutePath().length());
-            labels.add(relative.startsWith(java.io.File.separator) ? relative.substring(1) : relative);
+            relative = relative.startsWith(java.io.File.separator) ? relative.substring(1) : relative;
+            labels.add("[" + GameImportManager.getExecutableArchitecture(executable) + "] " + relative);
         }
         String[] choices = labels.toArray(new String[0]);
         new AlertDialog.Builder(this)
             .setTitle("Choose the game executable")
-            .setMessage("Select the main Age of Empires III: Definitive Edition executable. Only 64-bit Windows executables are listed.")
+            .setMessage("All .exe files are listed with their detected Windows architecture. Choose the main Age of Empires III: Definitive Edition game executable (normally x64).")
             .setItems(choices, (dialog, which) -> {
                 java.io.File executable = result.executables.get(which);
                 preferences.edit()
