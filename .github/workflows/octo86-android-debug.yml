@@ -5,6 +5,7 @@ on:
   push:
     branches: [main]
     paths:
+      - app/**
       - .github/workflows/octo86-android-debug.yml
 
 permissions:
@@ -54,6 +55,7 @@ jobs:
           test -f app/src/main/java/com/winlator/Aoe3HomeFragment.java
           test -f app/src/main/java/com/winlator/GameImportManager.java
           grep -q "Aoe3HomeFragment" app/src/main/java/com/winlator/MainActivity.java
+          ! grep -qE "MaterialButton|MaterialCardView" app/src/main/java/com/winlator/Aoe3HomeFragment.java
           grep -q "ShortcutsFragment" app/src/main/java/com/winlator/MainActivity.java
           grep -q "isInstalling" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
           grep -q "ensureDefaultContainer" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
