@@ -52,7 +52,7 @@ jobs:
           tar -xf "$RUNNER_TEMP/wine-package/wine-11.22-arm64ec.archive" \
             -C "$RUNNER_TEMP/wine-stage"
 
-          WINE_BIN="$(find "$RUNNER_TEMP/wine-stage" -type f -path '*/bin/wine' -print -quit)"
+          WINE_BIN="$(find "$RUNNER_TEMP/wine-stage" \( -type f -o -type l \) -path '*/bin/wine' -print -quit)"
           test -n "$WINE_BIN"
           WINE_ROOT="${WINE_BIN%/bin/wine}"
           file "$WINE_BIN" | tee "$RUNNER_TEMP/wine-binary.txt"
@@ -82,7 +82,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist
-          tar --zstd -I 'zstd -T0 -19' -cf dist/rootfs-wine-11.22.tzst \
+          tar -I 'zstd -T0 -19' -cf dist/rootfs-wine-11.22.tzst \
             -C "$RUNNER_TEMP/rootfs" .
           test -s dist/rootfs-wine-11.22.tzst
 
