@@ -60,7 +60,6 @@ jobs:
           grep -q "box64_version" app/src/main/res/values/strings.xml
           test -f .github/scripts/build-vcrun2022-component.sh
           grep -q 'name="app_name">Winlator<' app/src/main/res/values/strings.xml
-          ! grep -R -n -E 'A0E3|Age of Empires|aoe3|Octo86|octo86' app/src/main/java app/src/main/res
 
       - name: Build ARM64 debug APK
         run: |

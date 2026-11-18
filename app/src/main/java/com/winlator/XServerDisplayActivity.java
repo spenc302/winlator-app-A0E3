@@ -556,16 +556,7 @@ public class XServerDisplayActivity extends AppCompatActivity implements Navigat
         }
 
         guestProgramLauncherComponent.setEnvVars(envVars);
-        guestProgramLauncherComponent.setTerminationCallback((status) -> {
-            Intent launchIntent = getIntent();
-            if (launchIntent.getBooleanExtra("mark_aoe3_vcruntime_installed", false) && (status == 0 || status == 3010)) {
-                preferences.edit().putBoolean("aoe3_vcruntime_installed", true).putInt("aoe3_vcruntime_install_exit", status).apply();
-            }
-            else if (launchIntent.getBooleanExtra("mark_aoe3_vcruntime_installed", false)) {
-                preferences.edit().putInt("aoe3_vcruntime_install_exit", status).apply();
-            }
-            exit();
-        });
+        guestProgramLauncherComponent.setTerminationCallback((status) -> exit());
         environment.addComponent(guestProgramLauncherComponent);
 
         if (isGenerateWineprefix()) {
