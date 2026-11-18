@@ -1,16 +1,22 @@
 name: Build Winlator RootFS with Wine 11.22 ARM64EC
+run-name: Build Wine 11.22 ARM64EC RootFS
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - generic-winlator-port
+    paths:
+      - .github/workflows/build-rootfs-wine-11.22.yml
+      - src/main/assets/rootfs.tzst
 
 permissions:
   contents: read
 
 jobs:
   build-wine-rootfs:
-    # x86_64 builder: Wine's helper tools run natively while the Unix side
-    # is cross-compiled for AArch64 and PE modules for ARM64EC/AArch64/i386.
-    runs-on: ubuntu-24.04
+    name: Build and package Wine 11.22 RootFS
+    runs-on: ubuntu-22.04
     timeout-minutes: 360
     env:
       WINE_VERSION: "11.22"
@@ -48,12 +54,15 @@ jobs:
       - name: Install LLVM-MinGW ARM64EC cross compiler
         run: |
           set -euo pipefail
-          TOOLCHAIN_URL="https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-msvcrt-ubuntu-22.04-x86_64.tar.xz"
-          curl --fail --location --retry 3 "$TOOLCHAIN_URL" -o "$RUNNER_TEMP/llvm-mingw.tar.xz"
+          TOOLCHAIN_VERSION="20261104"
+          TOOLCHAIN_NAME="llvm-mingw-${TOOLCHAIN_VERSION}-msvcrt-ubuntu-22.04-x86_64.tar.xz"
+          TOOLCHAIN_URL="https://github.com/mstorsjo/llvm-mingw/releases/download/${TOOLCHAIN_VERSION}/${TOOLCHAIN_NAME}"
+          curl --fail --location --retry 3 "${TOOLCHAIN_URL}" -o "$RUNNER_TEMP/llvm-mingw.tar.xz"
           mkdir -p "$RUNNER_TEMP/llvm-mingw"
           tar -xf "$RUNNER_TEMP/llvm-mingw.tar.xz" -C "$RUNNER_TEMP/llvm-mingw" --strip-components=1
           echo "$RUNNER_TEMP/llvm-mingw/bin" >> "$GITHUB_PATH"
           test -x "$RUNNER_TEMP/llvm-mingw/bin/arm64ec-w64-mingw32-clang"
+          test -x "$RUNNER_TEMP/llvm-mingw/bin/aarch64-w64-mingw32-clang"
           "$RUNNER_TEMP/llvm-mingw/bin/arm64ec-w64-mingw32-clang" --version
           "$RUNNER_TEMP/llvm-mingw/bin/aarch64-w64-mingw32-clang" --version
 
@@ -72,17 +81,17 @@ jobs:
           set -euo pipefail
           mkdir -p "$WINE_SOURCE_DIR"
           curl --fail --location --retry 3 \
-            "https://dl.winehq.org/wine/source/11.x/wine-11.22.tar.xz" \
-            -o "$RUNNER_TEMP/wine-11.22.tar.xz"
-          tar -xf "$RUNNER_TEMP/wine-11.22.tar.xz" -C "$WINE_SOURCE_DIR"
-          test -f "$WINE_SOURCE_DIR/wine-11.22/configure"
+            "https://dl.winehq.org/wine/source/11.x/wine-${WINE_VERSION}.tar.xz" \
+            -o "$RUNNER_TEMP/wine-${WINE_VERSION}.tar.xz"
+          tar -xf "$RUNNER_TEMP/wine-${WINE_VERSION}.tar.xz" -C "$WINE_SOURCE_DIR"
+          test -f "$WINE_SOURCE_DIR/wine-${WINE_VERSION}/configure"
 
       - name: Build native Wine helper tools
         run: |
           set -euo pipefail
           mkdir -p "$TOOLS_DIR"
           cd "$TOOLS_DIR"
-          "$WINE_SOURCE_DIR/wine-11.22/configure" \
+          "$WINE_SOURCE_DIR/wine-${WINE_VERSION}/configure" \
             --enable-win64 \
             --without-x \
             --without-gstreamer \
@@ -106,7 +115,7 @@ jobs:
             CFLAGS="-O2 -pipe -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types" \
             CROSSCFLAGS="-O2 -pipe" \
             LDFLAGS="-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 -Wl,-rpath=/usr/lib -Wl,--sort-common,--as-needed" \
-            "$WINE_SOURCE_DIR/wine-11.22/configure" \
+            "$WINE_SOURCE_DIR/wine-${WINE_VERSION}/configure" \
             --prefix=/opt/wine \
             --host=aarch64-linux-gnu \
             --enable-archs=arm64ec,aarch64,i386 \
