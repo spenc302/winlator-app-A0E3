@@ -7,7 +7,7 @@ sudo dpkg --add-architecture i386
 sudo apt-get update
 sudo apt-get install -y --no-install-recommends wine wine64 wine32:i386 winetricks cabextract xvfb zstd
 
-export WINEPREFIX="$RUNNER_TEMP/a0e3-vcrun2022-prefix"
+export WINEPREFIX="$RUNNER_TEMP/winlator-vcrun2022-prefix"
 export WINEARCH=win64
 export WINEDEBUG=-all
 mkdir -p "$WINEPREFIX"
@@ -15,7 +15,7 @@ mkdir -p "$WINEPREFIX"
 xvfb-run -a winetricks -q vcrun2022
 
 WINDOWS_DIR="$WINEPREFIX/drive_c/windows"
-STAGE_DIR="$RUNNER_TEMP/a0e3-vcrun2022-component"
+STAGE_DIR="$RUNNER_TEMP/winlator-vcrun2022-component"
 ASSET="app/src/main/assets/wincomponents/vcrun2022.tzst"
 mkdir -p "$STAGE_DIR/system32" "$STAGE_DIR/syswow64"
 
@@ -40,7 +40,7 @@ for arch_dir in system32 syswow64; do
   done
 done
 
-# These are the core files the 64-bit game needs. Fail the build rather than
+# These are the core files 64-bit applications need. Fail the build rather than
 # shipping a component that only contains an installer or incomplete payload.
 for dll in vcruntime140.dll vcruntime140_1.dll msvcp140.dll; do
   test -s "$STAGE_DIR/system32/$dll"

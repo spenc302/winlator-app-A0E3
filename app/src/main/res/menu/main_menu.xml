@@ -2,7 +2,6 @@
 <menu
   xmlns:android="http://schemas.android.com/apk/res/android">
     <group android:checkableBehavior="single">
-        <item android:icon="@drawable/icon_shortcut" android:id="@+id/menu_item_aoe3" android:title="A0E3 Game Profile" />
         <item android:icon="@drawable/icon_shortcut" android:id="@+id/menu_item_shortcuts" android:title="@string/shortcuts" />
         <item android:icon="@drawable/icon_container" android:id="@+id/menu_item_containers" android:title="@string/containers" />
         <item android:icon="@drawable/icon_input_controls" android:id="@+id/menu_item_input_controls" android:title="@string/input_controls" />

@@ -1,19 +1,13 @@
-name: A0E3 Android debug APK
+name: Winlator Android debug APK
 
 on:
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - app/**
-      - .github/workflows/octo86-android-debug.yml
-      - .github/scripts/**
 
 permissions:
   contents: read
 
 concurrency:
-  group: a0e3-android-debug-${{ github.ref }}
+  group: winlator-android-debug-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -23,7 +17,7 @@ jobs:
     timeout-minutes: 45
 
     steps:
-      - name: Check out A0E3 source
+      - name: Check out Winlator source
         uses: actions/checkout@v4
         with:
           fetch-depth: 1
@@ -57,23 +51,16 @@ jobs:
       - name: Set up Gradle cache
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Verify A0E3 integration
+      - name: Verify Winlator components and runtime setup
         run: |
-          test -f app/src/main/java/com/winlator/Aoe3HomeFragment.java
-          test -f app/src/main/java/com/winlator/GameImportManager.java
-          grep -q "Aoe3HomeFragment" app/src/main/java/com/winlator/MainActivity.java
-          ! grep -qE "MaterialButton|MaterialCardView" app/src/main/java/com/winlator/Aoe3HomeFragment.java
-          grep -q "ShortcutsFragment" app/src/main/java/com/winlator/MainActivity.java
           grep -q "isInstalling" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
-          grep -q "ensureDefaultContainer" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
-          grep -q "Install / Repair Winlator System" app/src/main/java/com/winlator/ContainersFragment.java
-          grep -q "Create A0E3 Container" app/src/main/java/com/winlator/ContainersFragment.java
-          grep -q "wineExecutable.isFile" app/src/main/java/com/winlator/xenvironment/RootFS.java
-          grep -q "opt/wine/bin/wine" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
-          grep -q 'vcrun2022=1' app/src/main/java/com/winlator/container/Container.java
-          grep -q 'vcrun2022' app/src/main/assets/wincomponents/wincomponents.json
+          grep -q "wineExecutable.exists" app/src/main/java/com/winlator/xenvironment/RootFSInstaller.java
+          grep -q "vcrun2022" app/src/main/assets/wincomponents/wincomponents.json
+          grep -q "vcrun2022=0" app/src/main/java/com/winlator/container/Container.java
+          grep -q "box64_version" app/src/main/res/values/strings.xml
           test -f .github/scripts/build-vcrun2022-component.sh
-          grep -q 'name="app_name">A0E3<' app/src/main/res/values/strings.xml
+          grep -q 'name="app_name">Winlator<' app/src/main/res/values/strings.xml
+          ! grep -R -n -E 'A0E3|Age of Empires|aoe3|Octo86|octo86' app/src/main/java app/src/main/res
 
       - name: Build ARM64 debug APK
         run: |
@@ -83,7 +70,7 @@ jobs:
       - name: Upload ARM64 debug APK
         uses: actions/upload-artifact@v4
         with:
-          name: a0e3-arm64-debug
+          name: winlator-arm64-debug
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
