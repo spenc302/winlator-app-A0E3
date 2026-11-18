@@ -41,20 +41,23 @@ static void initMaterials(GLRenderer* renderer) {
     memcpy(materials[0].diffuse, diffuse, sizeof(diffuse));
     memcpy(materials[1].ambient, ambient, sizeof(ambient));
     memcpy(materials[1].diffuse, diffuse, sizeof(diffuse));
+    materials[0].alpha = materials[1].alpha = 1.0f;
 
     renderer->materials = materials;
 }
 
-static void initLight(GLLight* light) {
-    const float ambient[] = {0.2f, 0.2f, 0.2f};
+// GL defaults: ambient is 0 for every light, diffuse and specular are 1 only for GL_LIGHT0
+static void initLight(GLLight* light, int index) {
+    const float ambient[] = {0.0f, 0.0f, 0.0f};
     const float diffuse[] = {1.0f, 1.0f, 1.0f};
+    const float black[] = {0.0f, 0.0f, 0.0f};
     const float position[] = {0.0f, 0.0f, 1.0f, 0.0f};
     const float attenuation[] = {1.0f, 0.0f, 0.0f};
     const float spotDirection[] = {0.0f, 0.0f, -1.0f};
 
     memcpy(light->ambient, ambient, sizeof(ambient));
-    memcpy(light->diffuse, diffuse, sizeof(diffuse));
-    memcpy(light->specular, diffuse, sizeof(diffuse));
+    memcpy(light->diffuse, index == 0 ? diffuse : black, sizeof(diffuse));
+    memcpy(light->specular, index == 0 ? diffuse : black, sizeof(diffuse));
     memcpy(light->position, position, sizeof(position));
     memcpy(light->attenuation, attenuation, sizeof(position));
     memcpy(light->spotDirection, spotDirection, sizeof(spotDirection));
@@ -65,9 +68,11 @@ void GLRenderer_initOnEGLContext(GLRenderer* renderer) {
     const float color[] = {1.0f, 1.0f, 1.0f, 1.0f};
     const float normal[] = {0.0f, 0.0f, 1.0f};
     const float texCoord[] = {0.0f, 0.0f, 0.0f, 1.0f};
+    const float lightModelAmbient[] = {0.2f, 0.2f, 0.2f, 1.0f};
 
     memcpy(renderer->state.color, color, sizeof(color));
     memcpy(renderer->state.normal, normal, sizeof(normal));
+    memcpy(renderer->state.lightModelAmbient, lightModelAmbient, sizeof(lightModelAmbient));
 
     for (int i = 0; i < MAX_TEXTURES; i++) {
         memcpy(renderer->state.texCoords[i], texCoord, sizeof(texCoord));
@@ -98,10 +103,15 @@ void GLRenderer_initOnEGLContext(GLRenderer* renderer) {
     renderer->state.alphaTest.func = GL_ALWAYS;
     renderer->state.alphaTest.ref = 0.0f;
 
+    renderer->state.colorMaterial.face = GL_FRONT_AND_BACK;
+    renderer->state.colorMaterial.mode = GL_AMBIENT_AND_DIFFUSE;
+
     renderer->state.shadeModel = GL_SMOOTH;
     renderer->state.clampReadColor = false;
 
-    for (int i = 0; i < MAX_LIGHTS; i++) initLight(&renderer->lights[i]);
+    for (int i = 0; i < MAX_LIGHTS; i++) initLight(&renderer->lights[i], i);
+    // the default material applies even if the program never calls glMaterial
+    initMaterials(renderer);
 
     glGenBuffers(ARRAY_SIZE(renderer->bufferIds), renderer->bufferIds);
 
@@ -150,8 +160,15 @@ static void updateVertexBuffers(GLRenderer* renderer, int* attribLocations) {
         }
     }
 
-    if (attribLocations[NORMAL_ARRAY_INDEX] != -1 && geometry->normals.size > 0) {
-        bindVertexBuffer(renderer, renderer->bufferIds[3], attribLocations[NORMAL_ARRAY_INDEX], 3, geometry->normals.size, geometry->normals.buffer);
+    if (attribLocations[NORMAL_ARRAY_INDEX] != -1) {
+        if (geometry->normals.size > 0) {
+            bindVertexBuffer(renderer, renderer->bufferIds[3], attribLocations[NORMAL_ARRAY_INDEX], 3, geometry->normals.size, geometry->normals.buffer);
+        }
+        else {
+            // current normal for the whole batch (glNormal without a normal array)
+            GLRenderer_disableVertexAttribute(renderer, attribLocations[NORMAL_ARRAY_INDEX]);
+            glVertexAttrib3fv(attribLocations[NORMAL_ARRAY_INDEX], renderer->state.normal);
+        }
     }
 
     for (int i = 0, j = TEXCOORD_ARRAY_INDEX, k, count; i < MAX_TEXTURES; i++, j++) {
@@ -159,6 +176,18 @@ static void updateVertexBuffers(GLRenderer* renderer, int* attribLocations) {
             GLTexture* texture = renderer->clientState.texture[i][indexOfGLTarget(GL_TEXTURE_2D)];
             if (texture && texture->normalizeCoords) normalizeTexCoords(texture, &geometry->texCoords[i]);
             bindVertexBuffer(renderer, renderer->bufferIds[j+1], attribLocations[j], 4, geometry->texCoords[i].size, geometry->texCoords[i].buffer);
+        }
+        else if (attribLocations[j] != -1) {
+            // current texture coordinate for the whole batch (glTexCoord/glMultiTexCoord without an array)
+            GLRenderer_disableVertexAttribute(renderer, attribLocations[j]);
+            float texCoord[4];
+            memcpy(texCoord, renderer->state.texCoords[i], sizeof(texCoord));
+            GLTexture* texture = renderer->clientState.texture[i][indexOfGLTarget(GL_TEXTURE_2D)];
+            if (texture && texture->normalizeCoords && texture->width > 0 && texture->height > 0) {
+                texCoord[0] /= texture->width;
+                texCoord[1] /= texture->height;
+            }
+            glVertexAttrib4fv(attribLocations[j], texCoord);
         }
         geometry->texCoords[i].size = 0;
     }
@@ -379,24 +408,105 @@ void GLRenderer_popMatrix(GLRenderer* renderer) {
     }
 }
 
+/*
+ * The batch attributes (color, normal and the texture coordinates of each unit) stay aligned with
+ * the batch vertices. Each one is either empty, and then the current value (glColor, glNormal,
+ * glTexCoord) applies to every vertex of the batch when it is drawn, or it has exactly one entry
+ * per vertex. When the current value changes in the middle of a batch, or a draw call brings a
+ * client array for the attribute, the vertices so far get the value that applied to them. Before,
+ * two batched draw calls with different current colors both got the last one, and arrays shifted
+ * against each other when only one of the draw calls had an array for them.
+ */
+static ArrayBuffer* getBatchAttrib(GLRenderer* renderer, int arrayIdx, int* outComps, float** outValue) {
+    if (arrayIdx == COLOR_ARRAY_INDEX) {
+        *outComps = 4;
+        *outValue = renderer->state.color;
+        return &renderer->geometry.colors;
+    }
+    if (arrayIdx == NORMAL_ARRAY_INDEX) {
+        *outComps = 3;
+        *outValue = renderer->state.normal;
+        return &renderer->geometry.normals;
+    }
+    int unit = arrayIdx - TEXCOORD_ARRAY_INDEX;
+    *outComps = 4;
+    *outValue = renderer->state.texCoords[unit];
+    return &renderer->geometry.texCoords[unit];
+}
+
+#define BATCH_ATTRIB_FIRST COLOR_ARRAY_INDEX
+#define BATCH_ATTRIB_END (TEXCOORD_ARRAY_INDEX + MAX_TEXTURES)
+
+static inline int getBatchVertexCount(GLRenderer* renderer) {
+    return renderer->geometry.vertices.size / (int)(4 * sizeof(float));
+}
+
+// fill the attribute with its current value up to vertexCount entries
+static void padBatchAttrib(GLRenderer* renderer, int arrayIdx, int vertexCount) {
+    int comps;
+    float* value;
+    ArrayBuffer* buffer = getBatchAttrib(renderer, arrayIdx, &comps, &value);
+    int elementSize = comps * (int)sizeof(float);
+    int targetSize = vertexCount * elementSize;
+    if (buffer->size >= targetSize) return;
+    ENSURE_ARRAY_CAPACITY(targetSize, buffer->capacity, buffer->buffer, 1);
+    for (int offset = buffer->size; offset < targetSize; offset += elementSize) memcpy(buffer->buffer + offset, value, elementSize);
+    buffer->size = targetSize;
+}
+
+// glColor/glNormal/glTexCoord/glMultiTexCoord
+void GLRenderer_setCurrentAttrib(GLRenderer* renderer, int arrayIdx, const float* newValue) {
+    int comps;
+    float* value;
+    ArrayBuffer* buffer = getBatchAttrib(renderer, arrayIdx, &comps, &value);
+    if (buffer->size == 0) {
+        int vertexCount = getBatchVertexCount(renderer);
+        if (vertexCount > 0 && memcmp(value, newValue, comps * sizeof(float)) != 0) padBatchAttrib(renderer, arrayIdx, vertexCount);
+    }
+    memcpy(value, newValue, comps * sizeof(float));
+    buffer->position++;
+}
+
+/*
+ * Before reading a draw call with client arrays (addedVertices new vertices): attributes with an
+ * array get the current value for the vertices so far, attributes without an array that the batch
+ * already keeps per vertex get it for the new vertices.
+ */
+void GLRenderer_prepareBatchArrays(GLRenderer* renderer, int addedVertices) {
+    GLVertexAttrib* attribs = renderer->clientState.vao->attribs;
+    int vertexCount = getBatchVertexCount(renderer);
+    for (int arrayIdx = BATCH_ATTRIB_FIRST; arrayIdx < BATCH_ATTRIB_END; arrayIdx++) {
+        if (attribs[arrayIdx].state == VERTEX_ATTRIB_LEGACY_ENABLED) {
+            padBatchAttrib(renderer, arrayIdx, vertexCount);
+            continue;
+        }
+        int comps;
+        float* value;
+        ArrayBuffer* buffer = getBatchAttrib(renderer, arrayIdx, &comps, &value);
+        if (buffer->size > 0) padBatchAttrib(renderer, arrayIdx, vertexCount + addedVertices);
+    }
+}
+
+// draw the pending batch first if addedVertices more vertices would not fit into 16-bit indices
+void GLRenderer_reserveBatchVertices(GLRenderer* renderer, int addedVertices) {
+    if (renderer->geometry.vertices.position + addedVertices > 65535 && !ArrayDeque_isEmpty(&renderer->meshes) && !renderer->activeMesh) {
+        GLRenderer_drawImmediate(renderer);
+    }
+}
+
 void GLRenderer_addVertex(GLRenderer* renderer, GLfloat x, GLfloat y, GLfloat z, GLfloat w) {
     if (!renderer->activeMesh) return;
+
+    // attributes that the batch keeps per vertex get the current value
+    int vertexCount = getBatchVertexCount(renderer);
+    for (int arrayIdx = BATCH_ATTRIB_FIRST; arrayIdx < BATCH_ATTRIB_END; arrayIdx++) {
+        int comps;
+        float* value;
+        ArrayBuffer* buffer = getBatchAttrib(renderer, arrayIdx, &comps, &value);
+        if (buffer->size > 0) padBatchAttrib(renderer, arrayIdx, vertexCount + 1);
+    }
+
     ArrayBuffer_putFloat4(&renderer->geometry.vertices, x, y, z, w);
-
-    if (renderer->geometry.colors.position > 0 || renderer->geometry.colors.size > 0) {
-        ArrayBuffer_putBytes(&renderer->geometry.colors, renderer->state.color, 4 * sizeof(float));
-    }
-
-    if (renderer->geometry.normals.position > 0) {
-        ArrayBuffer_putBytes(&renderer->geometry.normals, renderer->state.normal, 3 * sizeof(float));
-    }
-
-    for (int i = 0; i < MAX_TEXTURES; i++) {
-        if (renderer->geometry.texCoords[i].position > 0) {
-            ArrayBuffer_putBytes(&renderer->geometry.texCoords[i], renderer->state.texCoords[i], 4 * sizeof(float));
-        }
-    }
-
     int index = renderer->geometry.vertices.position++;
     GLRenderer_addArrayElement(renderer, index);
 }
@@ -532,6 +642,7 @@ void GLRenderer_setMaterialParams(GLRenderer* renderer, GLenum face, GLenum pnam
                     break;
                 case GL_DIFFUSE:
                     memcpy(material->diffuse, params, sizeof(material->diffuse));
+                    material->alpha = ((float*)params)[3];
                     break;
                 case GL_SPECULAR:
                     memcpy(material->specular, params, 3 * sizeof(float));
@@ -545,6 +656,7 @@ void GLRenderer_setMaterialParams(GLRenderer* renderer, GLenum face, GLenum pnam
                 case GL_AMBIENT_AND_DIFFUSE:
                     memcpy(material->ambient, params, sizeof(material->ambient));
                     memcpy(material->diffuse, params, sizeof(material->diffuse));
+                    material->alpha = ((float*)params)[3];
                     break;
             }
         }
@@ -560,14 +672,12 @@ void GLRenderer_setLightParams(GLRenderer* renderer, GLenum id, GLenum pname, vo
         case GL_POSITION: {
             memcpy(light->position, params, sizeof(light->position));
             float* modelViewMatrix = GLRenderer_getMatrixFromStack(renderer, MODEL_VIEW_MATRIX_INDEX);
-            if (light->position[3] > 0.0f) {
+            // GL transforms positions (w != 0) and directions (w == 0) into eye space with the
+            // current modelview matrix; directions use its upper 3x3 part, not the inverse
+            if (light->position[3] != 0.0f) {
                 vec3_apply_mat4(light->position, modelViewMatrix);
             }
-            else {
-                float inverseMatrix[16];
-                mat4_inverse(inverseMatrix, modelViewMatrix);
-                vec3_transform_direction(light->position, inverseMatrix);
-            }
+            else vec3_transform_direction(light->position, modelViewMatrix);
             break;
         }
         case GL_AMBIENT:
@@ -600,11 +710,26 @@ void GLRenderer_setLightParams(GLRenderer* renderer, GLenum id, GLenum pname, vo
         case GL_SPOT_DIRECTION: {
             memcpy(light->spotDirection, params, sizeof(light->spotDirection));
             float* modelViewMatrix = GLRenderer_getMatrixFromStack(renderer, MODEL_VIEW_MATRIX_INDEX);
-            float inverseMatrix[16];
-            mat4_inverse(inverseMatrix, modelViewMatrix);
-            vec3_transform_direction(light->spotDirection, inverseMatrix);
+            vec3_transform_direction(light->spotDirection, modelViewMatrix);
             break;
         }
+    }
+}
+
+void GLRenderer_setLightModelParams(GLRenderer* renderer, GLenum pname, GLfloat* params) {
+    switch (pname) {
+        case GL_LIGHT_MODEL_AMBIENT:
+            memcpy(renderer->state.lightModelAmbient, params, sizeof(renderer->state.lightModelAmbient));
+            break;
+        case GL_LIGHT_MODEL_TWO_SIDE:
+            renderer->state.lightModelTwoSide = params[0] != 0.0f;
+            break;
+        case GL_LIGHT_MODEL_LOCAL_VIEWER:
+        case GL_LIGHT_MODEL_COLOR_CONTROL:
+            break;
+        default:
+            println("gladio:setLightModelParams: unimplemented pname %x", pname);
+            break;
     }
 }
 
@@ -772,6 +897,16 @@ int GLRenderer_getParamsv(GLRenderer* renderer, GLenum pname, GLenum type, void*
             if (params) memcpy(params, GLRenderer_getMatrixFromStack(renderer, TEXTURE_MATRIX_INDEX), MAT4_SIZE);
             paramSize = MAT4_SIZE;
             break;
+        case GL_MATRIX_MODE: {
+            // not part of OpenGL ES: the driver rejects the query and the reply would be uninitialized
+            GLenum mode = GL_MODELVIEW + renderer->matrixIndex;
+            if (params) {
+                if (type == GL_FLOAT) *(GLfloat*)params = (GLfloat)mode;
+                else if (type == GL_BOOL) *(GLboolean*)params = GL_TRUE;
+                else *(GLint*)params = (GLint)mode;
+            }
+            break;
+        }
         case GL_MAX_PROJECTION_STACK_DEPTH:
         case GL_MAX_TEXTURE_STACK_DEPTH:
             if (params) *(GLint*)params = 2;
@@ -1125,6 +1260,10 @@ void GLRenderer_setTexParameter(GLRenderer* renderer, GLenum target, GLenum pnam
             glTexParameteri(target, pname, param);
             break;
         }
+        case GL_TEXTURE_SWIZZLE_RGBA:
+            // OpenGL ES has no GL_TEXTURE_SWIZZLE_RGBA, set the four components one by one
+            for (int i = 0; i < 4; i++) glTexParameteri(target, GL_TEXTURE_SWIZZLE_R + i, (GLint)params[i]);
+            break;
         case GL_DEPTH_STENCIL_TEXTURE_MODE:
         case GL_TEXTURE_BASE_LEVEL:
         case GL_TEXTURE_COMPARE_FUNC:
@@ -1325,7 +1464,7 @@ void GLRenderer_disableUnusedVertexAttributes(GLRenderer* renderer) {
 static void freePixelReadCache(GLRenderer* renderer) {
     if (renderer->pixelReadCache) {
         if (renderer->pixelReadCache->data) free(renderer->pixelReadCache->data);
-        renderer->pixelReadCache = NULL;
+        MEMFREE(renderer->pixelReadCache);
     }
 }
 
@@ -1337,34 +1476,28 @@ void GLRenderer_resetFrameCount(GLRenderer* renderer) {
 void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width, GLsizei height, GLenum format, GLenum type, void* pixels) {
     int srcDataSize = width * height * 4;
     GLuint framebuffer = renderer->clientState.framebuffer[indexOfGLTarget(GL_READ_FRAMEBUFFER)];
+    // with a pixel pack buffer bound, pixels is an offset into that buffer and not a pointer,
+    // so the read cache can neither be filled from it nor copied into it
+    GLBuffer* pixelPackBuffer = GLBuffer_getBound(GL_PIXEL_PACK_BUFFER);
     PixelReadCache* pixelReadCache = renderer->pixelReadCache;
-    if (pixelReadCache && x == 0 && y == 0 &&
+    if (pixelReadCache && !pixelPackBuffer && x == 0 && y == 0 &&
                           pixelReadCache->dataSize == srcDataSize &&
+                          pixelReadCache->format == format &&
+                          pixelReadCache->type == type &&
                           pixelReadCache->framebuffer == framebuffer &&
                          (renderer->frameCount-pixelReadCache->frameIndex) <= PIXEL_READ_CACHE_SKIP_FRAMES) {
         memcpy(pixels, pixelReadCache->data, srcDataSize);
         return;
     }
 
-    GLBuffer* pixelPackBuffer = GLBuffer_getBound(GL_PIXEL_PACK_BUFFER);
     bool convert = format != GL_RGBA && format != GL_BGRA;
     if (pixelPackBuffer && convert) glBindBuffer(GL_PIXEL_PACK_BUFFER, 0);
 
     char* srcData = convert ? malloc(srcDataSize) : pixels;
     glReadPixels(x, y, width, height, GL_RGBA, GL_UNSIGNED_BYTE, srcData);
 
-    if (x == 0 && y == 0 && width <= 256 && height <= 256 && !convert) {
-        if (!pixelReadCache) renderer->pixelReadCache = pixelReadCache = calloc(1, sizeof(PixelReadCache));
-        if (srcDataSize != pixelReadCache->dataSize) {
-            MEMFREE(pixelReadCache->data);
-            pixelReadCache->data = malloc(srcDataSize);
-            pixelReadCache->dataSize = srcDataSize;
-        }
-        pixelReadCache->framebuffer = framebuffer;
-        pixelReadCache->frameIndex = renderer->frameCount;
-        memcpy(pixelReadCache->data, srcData, srcDataSize);
-    }
-    else freePixelReadCache(renderer);
+    bool cacheResult = x == 0 && y == 0 && width <= 256 && height <= 256 && !convert && !pixelPackBuffer;
+    if (!cacheResult) freePixelReadCache(renderer);
 
     if (pixelPackBuffer) {
         if (!convert) {
@@ -1416,10 +1549,12 @@ void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width
                 }
                 break;
             case GL_BGRA:
+                // dstData and srcData are the same buffer here, so keep red before overwriting it
                 for (int i = 0; i < srcDataSize; i += 4) {
+                    char red = srcData[i+0];
                     dstData[i+0] = srcData[i+2];
                     dstData[i+1] = srcData[i+1];
-                    dstData[i+2] = srcData[i+0];
+                    dstData[i+2] = red;
                     dstData[i+3] = srcData[i+3];
                 }
                 break;
@@ -1431,6 +1566,21 @@ void GLRenderer_readPixels(GLRenderer* renderer, GLint x, GLint y, GLsizei width
         }
     }
     else println("gladio:readPixels: unimplemented type %x", type);
+
+    // cache the pixels as the client got them, in the requested format
+    if (cacheResult) {
+        if (!pixelReadCache) renderer->pixelReadCache = pixelReadCache = calloc(1, sizeof(PixelReadCache));
+        if (srcDataSize != pixelReadCache->dataSize) {
+            MEMFREE(pixelReadCache->data);
+            pixelReadCache->data = malloc(srcDataSize);
+            pixelReadCache->dataSize = srcDataSize;
+        }
+        pixelReadCache->framebuffer = framebuffer;
+        pixelReadCache->format = format;
+        pixelReadCache->type = type;
+        pixelReadCache->frameIndex = renderer->frameCount;
+        memcpy(pixelReadCache->data, pixels, srcDataSize);
+    }
 
     if (convert) free(srcData);
 }

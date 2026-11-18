@@ -113,6 +113,7 @@ public abstract class TarCompressorUtils {
             return extract(type, context.getAssets().open(assetFile), destination, onExtractFileListener);
         }
         catch (IOException e) {
+            android.util.Log.e("Winlator-Archive", "Unable to open or extract bundled asset: "+assetFile, e);
             return false;
         }
     }

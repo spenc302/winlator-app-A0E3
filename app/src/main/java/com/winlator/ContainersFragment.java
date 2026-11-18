@@ -12,6 +12,7 @@ import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.FrameLayout;
+import android.widget.Button;
 import android.widget.ImageView;
 import android.widget.PopupMenu;
 import android.widget.TextView;
@@ -28,10 +29,12 @@ import androidx.recyclerview.widget.RecyclerView;
 
 import com.winlator.container.Container;
 import com.winlator.container.ContainerManager;
+
 import com.winlator.contentdialog.ContentDialog;
 import com.winlator.contentdialog.StorageInfoDialog;
 import com.winlator.core.PreloaderDialog;
 import com.winlator.xenvironment.RootFS;
+import com.winlator.xenvironment.RootFSInstaller;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +44,7 @@ public class ContainersFragment extends Fragment {
     private TextView emptyTextView;
     private ContainerManager manager;
     private PreloaderDialog preloaderDialog;
+    private Button setupContainerButton;
 
     @Override
     public void onCreate(@Nullable Bundle savedInstanceState) {
@@ -64,6 +68,17 @@ public class ContainersFragment extends Fragment {
         recyclerView = frameLayout.findViewById(R.id.RecyclerView);
         Context context = recyclerView.getContext();
         emptyTextView = frameLayout.findViewById(R.id.TVEmptyText);
+        setupContainerButton = frameLayout.findViewById(R.id.BTSetupContainer);
+        setupContainerButton.setOnClickListener(v -> {
+            if (RootFS.find(getContext()).isValid()) {
+                loadContainersList();
+            }
+            else if (!RootFSInstaller.isInstalling()) {
+                setupContainerButton.setEnabled(false);
+                setupContainerButton.setText("Installing system files…");
+                RootFSInstaller.install((MainActivity)getActivity(), this::loadContainersList);
+            }
+        });
         recyclerView.setLayoutManager(new LinearLayoutManager(context));
 
         DividerItemDecoration itemDecoration = new DividerItemDecoration(recyclerView.getContext(), DividerItemDecoration.VERTICAL);
@@ -72,10 +87,35 @@ public class ContainersFragment extends Fragment {
         return frameLayout;
     }
 
+    @Override
+    public void onResume() {
+        super.onResume();
+        if (manager != null && recyclerView != null) loadContainersList();
+    }
+
     private void loadContainersList() {
         ArrayList<Container> containers = manager.getContainers();
         recyclerView.setAdapter(new ContainersAdapter(containers));
-        if (containers.isEmpty()) emptyTextView.setVisibility(View.VISIBLE);
+        boolean empty = containers.isEmpty();
+        emptyTextView.setVisibility(empty ? View.VISIBLE : View.GONE);
+        boolean ready = RootFS.find(getContext()).isValid();
+        boolean installing = RootFSInstaller.isInstalling();
+        setupContainerButton.setVisibility(empty && (!ready || installing) ? View.VISIBLE : View.GONE);
+        if (empty) {
+            if (ready && !installing) {
+                emptyTextView.setText("No containers yet. Select + to create a container.");
+            }
+            else if (installing) {
+                emptyTextView.setText("Winlator is installing its system files. Keep the app open until installation finishes.");
+                setupContainerButton.setText("Installing system files…");
+                setupContainerButton.setEnabled(false);
+            }
+            else {
+                emptyTextView.setText("Winlator's Wine system files are missing or incomplete. Install or repair them before creating a container.");
+                setupContainerButton.setText("Install / Repair Winlator System");
+                setupContainerButton.setEnabled(true);
+            }
+        }
     }
 
     @Override
@@ -86,7 +126,16 @@ public class ContainersFragment extends Fragment {
     @Override
     public boolean onOptionsItemSelected(MenuItem menuItem) {
         if (menuItem.getItemId() == R.id.menu_item_add) {
-            if (!RootFS.find(getContext()).isValid()) return false;
+            if (!RootFS.find(getContext()).isValid()) {
+                if (RootFSInstaller.isInstalling()) {
+                    android.widget.Toast.makeText(getContext(), "Winlator is still installing its system files. Please wait.", android.widget.Toast.LENGTH_LONG).show();
+                }
+                else {
+                    android.widget.Toast.makeText(getContext(), "Winlator system files are missing. Retrying installation now.", android.widget.Toast.LENGTH_LONG).show();
+                    RootFSInstaller.install((MainActivity)getActivity());
+                }
+                return true;
+            }
             FragmentManager fragmentManager = getParentFragmentManager();
             fragmentManager.beginTransaction()
                 .addToBackStack(null)

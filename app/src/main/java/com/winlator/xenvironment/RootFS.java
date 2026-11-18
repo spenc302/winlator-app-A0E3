@@ -35,12 +35,22 @@ public class RootFS {
     }
 
     public boolean isValid() {
-        return rootDir.isDirectory() && getRFSVersionFile().exists();
+        File wineExecutable = new File(rootDir, "opt/wine/bin/wine");
+        File usrDir = new File(rootDir, "usr");
+        return rootDir.isDirectory() && getRFSVersionFile().isFile() &&
+            usrDir.isDirectory() && wineExecutable.isFile();
     }
 
     public int getVersion() {
         File rfsVersionFile = getRFSVersionFile();
-        return rfsVersionFile.exists() ? Integer.parseInt(FileUtils.readLines(rfsVersionFile).get(0)) : 0;
+        if (!rfsVersionFile.isFile()) return 0;
+        try {
+            java.util.List<String> lines = FileUtils.readLines(rfsVersionFile);
+            return lines.isEmpty() ? 0 : Integer.parseInt(lines.get(0).trim());
+        }
+        catch (Exception e) {
+            return 0;
+        }
     }
 
     public String getFormattedVersion() {

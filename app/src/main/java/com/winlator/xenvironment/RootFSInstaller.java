@@ -23,12 +23,13 @@ import org.json.JSONObject;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.concurrent.Executors;
-import java.util.concurrent.atomic.AtomicLong;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 public abstract class RootFSInstaller {
     public static final byte LATEST_VERSION = 23; // TODO increment it on rootfs update
     public static final byte UPDATE_WINEPREFIX_VERSION = 16; // set it if main wine version change
     public static final String FILENAME = "rootfs.tzst";
+    private static final AtomicBoolean INSTALLING = new AtomicBoolean(false);
 
     private static void resetContainerRFSVersions(Context context) {
         ContainerManager manager = new ContainerManager(context);
@@ -44,36 +45,68 @@ public abstract class RootFSInstaller {
         }
     }
 
+    public static boolean isInstalling() {
+        return INSTALLING.get();
+    }
+
     public static void install(final MainActivity activity) {
+        install(activity, null);
+    }
+
+    public static void install(final MainActivity activity, final Runnable onComplete) {
+        if (!INSTALLING.compareAndSet(false, true)) return;
+
         AppUtils.keepScreenOn(activity);
         RootFS rootFS = RootFS.find(activity);
         final File rootDir = rootFS.getRootDir();
-
-        SettingsFragment.resetPreferenceVersions(activity);
-
         final DownloadProgressDialog dialog = new DownloadProgressDialog(activity);
         dialog.show(R.string.installing_system_files);
+
         Executors.newSingleThreadExecutor().execute(() -> {
-            clearRootDir(rootDir);
-            final long contentLength = TarCompressorUtils.getContentLength(TarCompressorUtils.Type.ZSTD, activity, FILENAME, rootDir);
-            AtomicLong totalSizeRef = new AtomicLong();
-
-            boolean success = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, activity, FILENAME, rootDir, (file, size) -> {
-                if (size > 0) {
-                    long totalSize = totalSizeRef.addAndGet(size);
-                    final int progress = (int)(((float)totalSize / contentLength) * 100);
-                    activity.runOnUiThread(() -> dialog.setProgress(progress));
+            boolean success = false;
+            String failure = null;
+            try {
+                clearRootDir(rootDir);
+                success = TarCompressorUtils.extract(TarCompressorUtils.Type.ZSTD, activity, FILENAME, rootDir);
+                File wineExecutable = new File(rootDir, "opt/wine/bin/wine");
+                if (success && !wineExecutable.exists()) {
+                    success = false;
+                    failure = "The RootFS archive extracted, but its Wine runtime is missing.";
                 }
-                return file;
-            });
 
-            if (success) {
-                rootFS.createRFSVersionFile(LATEST_VERSION);
-                resetContainerRFSVersions(activity);
+                if (success) {
+                    rootFS.createRFSVersionFile(LATEST_VERSION);
+                    if (!rootFS.isValid() || rootFS.getVersion() < LATEST_VERSION) {
+                        success = false;
+                        failure = "RootFS extracted, but its version marker could not be written.";
+                    }
+                    else {
+                        SettingsFragment.resetPreferenceVersions(activity);
+                        resetContainerRFSVersions(activity);
+                    }
+                }
+                else if (failure == null) {
+                    failure = "The RootFS archive could not be extracted. Check that the app has enough free storage and reinstall the system files.";
+                }
             }
-            else AppUtils.showToast(activity, R.string.unable_to_install_system_files);
-
-            dialog.closeOnUiThread();
+            catch (Throwable error) {
+                success = false;
+                failure = error.getClass().getSimpleName()+": "+String.valueOf(error.getMessage());
+                android.util.Log.e("Winlator-RootFS", "RootFS installation failed", error);
+            }
+            finally {
+                final boolean installed = success;
+                final String errorMessage = failure;
+                activity.runOnUiThread(() -> {
+                    if (!activity.isFinishing()) {
+                        if (installed) dialog.setProgress(100);
+                        else AppUtils.showToast(activity, "Winlator system installation failed: "+errorMessage);
+                    }
+                    dialog.close();
+                    INSTALLING.set(false);
+                    if (!activity.isFinishing() && onComplete != null) onComplete.run();
+                });
+            }
         });
     }
 
