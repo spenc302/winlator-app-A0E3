@@ -60,9 +60,9 @@ jobs:
       - name: Extract the current Winlator RootFS
         run: |
           set -euo pipefail
-          test -s app/src/main/assets/rootfs.tzst
+          test -s src/main/assets/rootfs.tzst
           mkdir -p "$ROOTFS_DIR"
-          tar --zstd -xf app/src/main/assets/rootfs.tzst -C "$ROOTFS_DIR"
+          tar --zstd -xf src/main/assets/rootfs.tzst -C "$ROOTFS_DIR"
           test -d "$ROOTFS_DIR/usr"
           test -x "$ROOTFS_DIR/opt/wine/bin/wine"
           test -e "$ROOTFS_DIR/lib/ld-linux-aarch64.so.1" -o -e "$ROOTFS_DIR/usr/lib/ld-linux-aarch64.so.1"
