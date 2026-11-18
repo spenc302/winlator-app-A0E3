@@ -31,6 +31,20 @@ jobs:
         run: |
           set -euxo pipefail
           sudo dpkg --add-architecture arm64
+
+          # Ubuntu's amd64 runner mirrors do not publish arm64 indexes.
+          # Keep the runner's normal repositories amd64-only and add Ubuntu Ports for arm64.
+          for source_file in /etc/apt/sources.list.d/ubuntu.sources; do
+            if [ -f "$source_file" ]; then
+              sudo sed -i '/^Components:/a Architectures: amd64' "$source_file"
+            fi
+          done
+          printf '%s\n' \
+            'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main universe multiverse restricted' \
+            'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main universe multiverse restricted' \
+            'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main universe multiverse restricted' \
+            'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-security main universe multiverse restricted' \
+            | sudo tee /etc/apt/sources.list.d/arm64-ports.list
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
