@@ -1,7 +1,7 @@
 name: Build Winlator RootFS with Wine 11.22 ARM64EC
 run-name: Build Wine 11.22 ARM64EC RootFS
 
-on:
+"on":
   workflow_dispatch:
   push:
     branches:
