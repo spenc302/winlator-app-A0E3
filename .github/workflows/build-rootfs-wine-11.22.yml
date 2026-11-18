@@ -20,11 +20,6 @@ jobs:
     timeout-minutes: 360
     env:
       WINE_VERSION: "11.22"
-      WINE_SOURCE_DIR: ${{ runner.temp }}/wine-11.22
-      TOOLS_DIR: ${{ runner.temp }}/wine-tools
-      BUILD_DIR: ${{ runner.temp }}/wine-arm64ec-build
-      STAGE_DIR: ${{ runner.temp }}/wine-stage
-      ROOTFS_DIR: ${{ runner.temp }}/rootfs
 
     steps:
       - name: Checkout Winlator app source
@@ -69,6 +64,7 @@ jobs:
       - name: Extract the current Winlator RootFS
         run: |
           set -euo pipefail
+          ROOTFS_DIR="$RUNNER_TEMP/rootfs"
           test -s src/main/assets/rootfs.tzst
           mkdir -p "$ROOTFS_DIR"
           tar --zstd -xf src/main/assets/rootfs.tzst -C "$ROOTFS_DIR"
@@ -79,6 +75,7 @@ jobs:
       - name: Download Wine 11.22 source
         run: |
           set -euo pipefail
+          WINE_SOURCE_DIR="$RUNNER_TEMP/wine-11.22"
           mkdir -p "$WINE_SOURCE_DIR"
           curl --fail --location --retry 3 \
             "https://dl.winehq.org/wine/source/11.x/wine-${WINE_VERSION}.tar.xz" \
@@ -89,6 +86,8 @@ jobs:
       - name: Build native Wine helper tools
         run: |
           set -euo pipefail
+          WINE_SOURCE_DIR="$RUNNER_TEMP/wine-11.22"
+          TOOLS_DIR="$RUNNER_TEMP/wine-tools"
           mkdir -p "$TOOLS_DIR"
           cd "$TOOLS_DIR"
           "$WINE_SOURCE_DIR/wine-${WINE_VERSION}/configure" \
@@ -105,6 +104,10 @@ jobs:
       - name: Configure Wine ARM64EC and AArch64 Unix build
         run: |
           set -euo pipefail
+          WINE_SOURCE_DIR="$RUNNER_TEMP/wine-11.22"
+          TOOLS_DIR="$RUNNER_TEMP/wine-tools"
+          BUILD_DIR="$RUNNER_TEMP/wine-arm64ec-build"
+          STAGE_DIR="$RUNNER_TEMP/wine-stage"
           mkdir -p "$BUILD_DIR" "$STAGE_DIR"
           cd "$BUILD_DIR"
           export PATH="$RUNNER_TEMP/llvm-mingw/bin:$PATH"
@@ -162,6 +165,8 @@ jobs:
       - name: Compile and install Wine 11.22
         run: |
           set -euo pipefail
+          BUILD_DIR="$RUNNER_TEMP/wine-arm64ec-build"
+          STAGE_DIR="$RUNNER_TEMP/wine-stage"
           cd "$BUILD_DIR"
           make -j"$(nproc)"
           make DESTDIR="$STAGE_DIR" install STRIP=true
@@ -179,6 +184,8 @@ jobs:
       - name: Merge Wine into existing RootFS and package
         run: |
           set -euo pipefail
+          STAGE_DIR="$RUNNER_TEMP/wine-stage"
+          ROOTFS_DIR="$RUNNER_TEMP/rootfs"
           WINE_ROOT="$STAGE_DIR/opt/wine"
           rm -rf "$ROOTFS_DIR/opt/wine"
           mkdir -p "$ROOTFS_DIR/opt/wine"
