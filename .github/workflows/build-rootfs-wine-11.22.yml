@@ -36,7 +36,7 @@ jobs:
           # is the only source used for arm64 packages on this amd64 runner.
           for source_file in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do
             if [ -f "$source_file" ]; then
-              sudo sed -i -E 's|^deb (https?://)|deb [arch=amd64] \\1|' "$source_file"
+              sudo sed -i -E 's|^deb (https?://)|deb [arch=amd64] \1|' "$source_file"
             fi
           done
           for source_file in /etc/apt/sources.list.d/*.sources; do
