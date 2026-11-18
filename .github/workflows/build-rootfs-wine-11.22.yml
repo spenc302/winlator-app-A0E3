@@ -48,7 +48,7 @@ jobs:
               sudo mv "$source_file.tmp" "$source_file"
             fi
           done
-          printf '%s\\n' \
+          printf '%s\n' \
             'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy main universe multiverse restricted' \
             'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-updates main universe multiverse restricted' \
             'deb [arch=arm64] http://ports.ubuntu.com/ubuntu-ports jammy-backports main universe multiverse restricted' \
