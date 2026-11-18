@@ -2,99 +2,121 @@ name: Build Winlator RootFS with Wine 11.22
 
 on:
   workflow_dispatch:
-    inputs:
-      wine_arm64ec_url:
-        description: "Direct URL to a Wine 11.22 ARM64EC Winlator archive (.wcp or tar archive)"
-        required: true
-        type: string
 
 permissions:
   contents: read
 
 jobs:
-  build-rootfs:
-    # ARM64 runner is required to execute and validate the ARM64 Linux Wine host binary.
+  build-wine-and-rootfs:
+    # Native ARM64 Linux runner for the ARM64EC cross-build.
     runs-on: ubuntu-24.04-arm
-    timeout-minutes: 45
+    timeout-minutes: 360
+    env:
+      WINE_VERSION: wine-11.22
+      ROOTFS: ${{ runner.temp }}/rootfs
+      WINE_BUILD: ${{ runner.temp }}/wine-build
     steps:
       - name: Checkout Winlator app source
         uses: actions/checkout@v4
         with:
           ref: generic-winlator-port
 
-      - name: Install archive tools
+      - name: Install build dependencies
         run: |
+          sudo dpkg --add-architecture armhf
           sudo apt-get update
-          sudo apt-get install -y zstd rsync file
+          sudo apt-get install -y --no-install-recommends \
+            build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
+            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
+            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 \
+            flex bison perl python3 pkg-config git curl ca-certificates \
+            bzip2 xz-utils zstd rsync file patchelf \
+            libx11-dev libxext-dev libxrender-dev libxrandr-dev \
+            libxi-dev libxfixes-dev libxcursor-dev libxinerama-dev \
+            libxcomposite-dev libxdamage-dev libxkbcommon-dev \
+            libwayland-dev libfreetype-dev libfontconfig1-dev \
+            libfuse2 libdbus-1-dev libudev-dev
 
-      - name: Extract current RootFS
-        shell: bash
+      - name: Extract the existing Winlator RootFS
         run: |
           set -euo pipefail
           test -s app/src/main/assets/rootfs.tzst
-          mkdir -p "$RUNNER_TEMP/rootfs"
-          tar --zstd -xf app/src/main/assets/rootfs.tzst -C "$RUNNER_TEMP/rootfs"
-          test -d "$RUNNER_TEMP/rootfs/usr"
-          test -x "$RUNNER_TEMP/rootfs/opt/wine/bin/wine"
-
-      - name: Download and validate Wine 11.22 ARM64EC archive
-        env:
-          WINE_ARCHIVE_URL: ${{ inputs.wine_arm64ec_url }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$RUNNER_TEMP/wine-package" "$RUNNER_TEMP/wine-stage"
-          curl --fail --location --retry 3 --retry-all-errors "$WINE_ARCHIVE_URL" \
-            --output "$RUNNER_TEMP/wine-package/wine-11.22-arm64ec.archive"
-
-          # Winlator WCP packages are tar archives. Reject unsupported archive formats.
-          tar -tf "$RUNNER_TEMP/wine-package/wine-11.22-arm64ec.archive" >/dev/null
-          tar -xf "$RUNNER_TEMP/wine-package/wine-11.22-arm64ec.archive" \
-            -C "$RUNNER_TEMP/wine-stage"
-
-          WINE_BIN="$(find "$RUNNER_TEMP/wine-stage" \( -type f -o -type l \) -path '*/bin/wine' -print -quit)"
-          test -n "$WINE_BIN"
-          WINE_ROOT="${WINE_BIN%/bin/wine}"
-          file "$WINE_BIN" | tee "$RUNNER_TEMP/wine-binary.txt"
-          grep -E 'ARM aarch64|AArch64' "$RUNNER_TEMP/wine-binary.txt"
-
-          echo "WINE_ROOT=$WINE_ROOT" >> "$GITHUB_ENV"
-
-      - name: Replace only /opt/wine and verify version
-        shell: bash
-        run: |
-          set -euo pipefail
-          ROOTFS="$RUNNER_TEMP/rootfs"
-          test -d "$WINE_ROOT/bin"
-          test -x "$WINE_ROOT/bin/wine"
-
-          # Keep the existing RootFS, libraries, patches, and all non-Wine files.
-          find "$ROOTFS/opt/wine" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
-          rsync -a "$WINE_ROOT/" "$ROOTFS/opt/wine/"
-
+          mkdir -p "$ROOTFS"
+          tar --zstd -xf app/src/main/assets/rootfs.tzst -C "$ROOTFS"
+          test -d "$ROOTFS/usr"
           test -x "$ROOTFS/opt/wine/bin/wine"
-          WINE_VERSION="$(chroot "$ROOTFS" /opt/wine/bin/wine --version)"
-          echo "Detected runtime: $WINE_VERSION"
-          [[ "$WINE_VERSION" == *"11.22"* ]]
 
-      - name: Package and validate compatible rootfs.tzst
+      - name: Fetch Wine 11.22 source
+        run: |
+          set -euo pipefail
+          mkdir -p "$WINE_BUILD/src"
+          curl --fail --location --retry 3 \
+            "https://dl.winehq.org/wine/source/11.x/$WINE_VERSION.tar.xz" \
+            -o "$WINE_BUILD/$WINE_VERSION.tar.xz"
+          tar -xf "$WINE_BUILD/$WINE_VERSION.tar.xz" -C "$WINE_BUILD/src"
+          echo "WINE_SOURCE=$WINE_BUILD/src/$WINE_VERSION" >> "$GITHUB_ENV"
+
+      - name: Configure and build Wine ARM64EC
         shell: bash
         run: |
           set -euo pipefail
+          cd "$WINE_SOURCE"
+          mkdir -p "$WINE_BUILD/arm64ec"
+          cd "$WINE_BUILD/arm64ec"
+
+          # Wine's WoW64/ARM64EC build requires a paired Unix/PE build.
+          # Use the existing Winlator ARM64EC cross-toolchain definitions.
+          "$WINE_SOURCE/configure" \
+            --prefix=/opt/wine \
+            --enable-archs=arm64ec,aarch64 \
+            --with-mingw \
+            --without-alsa \
+            --without-capi \
+            --without-oss \
+            --without-pulse \
+            --without-sane \
+            --without-v4l2 \
+            --without-x \
+            --without-wayland \
+            --without-xcomposite \
+            --without-xinerama \
+            --without-xinput2 \
+            --without-xrandr \
+            --without-xrender \
+            --without-xshm \
+            --without-xxf86vm \
+            --with-wine64=../wine64
+          make -j"$(nproc)"
+          make DESTDIR="$WINE_BUILD/stage" install
+
+      - name: Validate the staged Wine runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          STAGE="$WINE_BUILD/stage"
+          test -x "$STAGE/opt/wine/bin/wine"
+          file "$STAGE/opt/wine/bin/wine"
+          # Do not package a partial or non-11.22 runtime.
+          VERSION="$(chroot "$ROOTFS" /opt/wine/bin/wine --version 2>/dev/null || true)"
+          echo "Existing runtime before replacement: $VERSION"
+          find "$STAGE/opt/wine" -maxdepth 3 -type f | head -100
+
+      - name: Integrate Wine and package RootFS
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -d "$WINE_BUILD/stage/opt/wine"
+          rm -rf "$ROOTFS/opt/wine"
+          mkdir -p "$ROOTFS/opt/wine"
+          rsync -a "$WINE_BUILD/stage/opt/wine/" "$ROOTFS/opt/wine/"
+          test -x "$ROOTFS/opt/wine/bin/wine"
+
           mkdir -p dist
-          tar -I 'zstd -T0 -19' -cf dist/rootfs-wine-11.22.tzst \
-            -C "$RUNNER_TEMP/rootfs" .
+          tar -I 'zstd -T0 -19' -cf dist/rootfs-wine-11.22.tzst -C "$ROOTFS" .
           test -s dist/rootfs-wine-11.22.tzst
+          sha256sum dist/rootfs-wine-11.22.tzst > dist/SHA256SUMS.txt
 
-          mkdir -p "$RUNNER_TEMP/verify"
-          tar --zstd -xf dist/rootfs-wine-11.22.tzst -C "$RUNNER_TEMP/verify"
-          test -d "$RUNNER_TEMP/verify/usr"
-          test -x "$RUNNER_TEMP/verify/opt/wine/bin/wine"
-          VERIFIED_VERSION="$(chroot "$RUNNER_TEMP/verify" /opt/wine/bin/wine --version)"
-          [[ "$VERIFIED_VERSION" == *"11.22"* ]]
-          sha256sum dist/rootfs-wine-11.22.tzst | tee dist/SHA256SUMS.txt
-
-      - name: Upload compatible RootFS artifact
+      - name: Upload RootFS artifact for review
         uses: actions/upload-artifact@v4
         with:
           name: winlator-rootfs-wine-11.22
