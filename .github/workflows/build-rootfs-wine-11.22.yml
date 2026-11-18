@@ -1,4 +1,4 @@
-name: Build Winlator RootFS with Wine 11.22
+name: Build Winlator RootFS with Wine 11.22 ARM64EC
 
 on:
   workflow_dispatch:
@@ -7,121 +7,187 @@ permissions:
   contents: read
 
 jobs:
-  build-wine-and-rootfs:
-    # Native ARM64 Linux runner for the ARM64EC cross-build.
-    runs-on: ubuntu-24.04-arm
+  build-wine-rootfs:
+    # x86_64 builder: Wine's helper tools run natively while the Unix side
+    # is cross-compiled for AArch64 and PE modules for ARM64EC/AArch64/i386.
+    runs-on: ubuntu-24.04
     timeout-minutes: 360
     env:
-      WINE_VERSION: wine-11.22
-      ROOTFS: ${{ runner.temp }}/rootfs
-      WINE_BUILD: ${{ runner.temp }}/wine-build
+      WINE_VERSION: "11.22"
+      WINE_SOURCE_DIR: ${{ runner.temp }}/wine-11.22
+      TOOLS_DIR: ${{ runner.temp }}/wine-tools
+      BUILD_DIR: ${{ runner.temp }}/wine-arm64ec-build
+      STAGE_DIR: ${{ runner.temp }}/wine-stage
+      ROOTFS_DIR: ${{ runner.temp }}/rootfs
+
     steps:
       - name: Checkout Winlator app source
         uses: actions/checkout@v4
         with:
           ref: generic-winlator-port
 
-      - name: Install build dependencies
+      - name: Install cross-build dependencies
         run: |
-          sudo dpkg --add-architecture armhf
+          set -euxo pipefail
+          sudo dpkg --add-architecture arm64
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential gcc-aarch64-linux-gnu g++-aarch64-linux-gnu \
-            gcc-arm-linux-gnueabihf g++-arm-linux-gnueabihf \
-            gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 \
-            flex bison perl python3 pkg-config git curl ca-certificates \
-            bzip2 xz-utils zstd rsync file patchelf \
-            libx11-dev libxext-dev libxrender-dev libxrandr-dev \
-            libxi-dev libxfixes-dev libxcursor-dev libxinerama-dev \
-            libxcomposite-dev libxdamage-dev libxkbcommon-dev \
-            libwayland-dev libfreetype-dev libfontconfig1-dev \
-            libfuse2 libdbus-1-dev libudev-dev
+            binutils-aarch64-linux-gnu pkg-config flex bison perl python3 \
+            git curl ca-certificates xz-utils zstd rsync file patchelf \
+            libfreetype-dev libfontconfig1-dev \
+            libfreetype-dev:arm64 libfontconfig1-dev:arm64 \
+            libgnutls28-dev:arm64 libx11-dev:arm64 libxext-dev:arm64 \
+            libxrender-dev:arm64 libxrandr-dev:arm64 libxi-dev:arm64 \
+            libxfixes-dev:arm64 libxcursor-dev:arm64 libxinerama-dev:arm64 \
+            libxcomposite-dev:arm64 libxdamage-dev:arm64 \
+            libgstreamer1.0-dev:arm64 libgstreamer-plugins-base1.0-dev:arm64 \
+            libvulkan-dev:arm64 libgl-dev:arm64 \
+            libpulse-dev:arm64 libasound2-dev:arm64
 
-      - name: Extract the existing Winlator RootFS
+      - name: Install LLVM-MinGW ARM64EC cross compiler
+        run: |
+          set -euo pipefail
+          TOOLCHAIN_URL="https://github.com/mstorsjo/llvm-mingw/releases/download/20261104/llvm-mingw-20261104-msvcrt-ubuntu-22.04-x86_64.tar.xz"
+          curl --fail --location --retry 3 "$TOOLCHAIN_URL" -o "$RUNNER_TEMP/llvm-mingw.tar.xz"
+          mkdir -p "$RUNNER_TEMP/llvm-mingw"
+          tar -xf "$RUNNER_TEMP/llvm-mingw.tar.xz" -C "$RUNNER_TEMP/llvm-mingw" --strip-components=1
+          echo "$RUNNER_TEMP/llvm-mingw/bin" >> "$GITHUB_PATH"
+          test -x "$RUNNER_TEMP/llvm-mingw/bin/arm64ec-w64-mingw32-clang"
+          "$RUNNER_TEMP/llvm-mingw/bin/arm64ec-w64-mingw32-clang" --version
+          "$RUNNER_TEMP/llvm-mingw/bin/aarch64-w64-mingw32-clang" --version
+
+      - name: Extract the current Winlator RootFS
         run: |
           set -euo pipefail
           test -s app/src/main/assets/rootfs.tzst
-          mkdir -p "$ROOTFS"
-          tar --zstd -xf app/src/main/assets/rootfs.tzst -C "$ROOTFS"
-          test -d "$ROOTFS/usr"
-          test -x "$ROOTFS/opt/wine/bin/wine"
+          mkdir -p "$ROOTFS_DIR"
+          tar --zstd -xf app/src/main/assets/rootfs.tzst -C "$ROOTFS_DIR"
+          test -d "$ROOTFS_DIR/usr"
+          test -x "$ROOTFS_DIR/opt/wine/bin/wine"
+          test -e "$ROOTFS_DIR/lib/ld-linux-aarch64.so.1" -o -e "$ROOTFS_DIR/usr/lib/ld-linux-aarch64.so.1"
 
-      - name: Fetch Wine 11.22 source
+      - name: Download Wine 11.22 source
         run: |
           set -euo pipefail
-          mkdir -p "$WINE_BUILD/src"
+          mkdir -p "$WINE_SOURCE_DIR"
           curl --fail --location --retry 3 \
-            "https://dl.winehq.org/wine/source/11.x/$WINE_VERSION.tar.xz" \
-            -o "$WINE_BUILD/$WINE_VERSION.tar.xz"
-          tar -xf "$WINE_BUILD/$WINE_VERSION.tar.xz" -C "$WINE_BUILD/src"
-          echo "WINE_SOURCE=$WINE_BUILD/src/$WINE_VERSION" >> "$GITHUB_ENV"
+            "https://dl.winehq.org/wine/source/11.x/wine-11.22.tar.xz" \
+            -o "$RUNNER_TEMP/wine-11.22.tar.xz"
+          tar -xf "$RUNNER_TEMP/wine-11.22.tar.xz" -C "$WINE_SOURCE_DIR"
+          test -f "$WINE_SOURCE_DIR/wine-11.22/configure"
 
-      - name: Configure and build Wine ARM64EC
-        shell: bash
+      - name: Build native Wine helper tools
         run: |
           set -euo pipefail
-          cd "$WINE_SOURCE"
-          mkdir -p "$WINE_BUILD/arm64ec"
-          cd "$WINE_BUILD/arm64ec"
-
-          # Wine's WoW64/ARM64EC build requires a paired Unix/PE build.
-          # Use the existing Winlator ARM64EC cross-toolchain definitions.
-          "$WINE_SOURCE/configure" \
-            --prefix=/opt/wine \
-            --enable-archs=arm64ec,aarch64 \
-            --with-mingw \
-            --without-alsa \
-            --without-capi \
-            --without-oss \
-            --without-pulse \
-            --without-sane \
-            --without-v4l2 \
+          mkdir -p "$TOOLS_DIR"
+          cd "$TOOLS_DIR"
+          "$WINE_SOURCE_DIR/wine-11.22/configure" \
+            --enable-win64 \
             --without-x \
-            --without-wayland \
-            --without-xcomposite \
+            --without-gstreamer \
+            --without-vulkan \
+            --without-opengl \
+            --without-unwind \
+            --disable-tests
+          make __tooldeps__ -j"$(nproc)"
+          make -C nls -j"$(nproc)"
+
+      - name: Configure Wine ARM64EC and AArch64 Unix build
+        run: |
+          set -euo pipefail
+          mkdir -p "$BUILD_DIR" "$STAGE_DIR"
+          cd "$BUILD_DIR"
+          export PATH="$RUNNER_TEMP/llvm-mingw/bin:$PATH"
+          export PKG_CONFIG_LIBDIR="/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
+          unset PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR CROSSCC
+          "$WINE_SOURCE_DIR/wine-11.22/configure" \
+            --prefix=/opt/wine \
+            --host=aarch64-linux-gnu \
+            --enable-archs=arm64ec,aarch64,i386 \
+            --with-mingw=clang \
+            --with-wine-tools="$TOOLS_DIR" \
+            --with-freetype \
+            --with-fontconfig \
+            --with-gstreamer \
+            --with-vulkan \
+            --with-opengl \
+            --with-gnutls \
+            --with-xrandr \
+            --with-xrender \
+            --with-pulse \
+            --with-alsa \
+            --enable-tools \
+            --disable-tests \
+            --disable-win16 \
+            --without-unwind \
+            --without-dbus \
+            --without-inotify \
+            --without-netapi \
             --without-xinerama \
-            --without-xinput2 \
-            --without-xrandr \
-            --without-xrender \
-            --without-xshm \
-            --without-xxf86vm \
-            --with-wine64=../wine64
+            --without-capi \
+            --without-coreaudio \
+            --without-cups \
+            --without-gphoto \
+            --without-oss \
+            --without-pcap \
+            --without-pcsclite \
+            --without-sane \
+            --without-udev \
+            --without-usb \
+            --without-v4l2 \
+            --without-wayland \
+            --without-ffmpeg \
+            --without-opencl \
+            --without-sdl \
+            --without-krb5 \
+            --without-gssapi \
+            --without-gettext \
+            --with-gettextpo=no \
+            CC=aarch64-linux-gnu-gcc \
+            CFLAGS="-O2 -pipe -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types" \
+            CROSSCFLAGS="-O2 -pipe" \
+            LDFLAGS="-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 -Wl,-rpath=/usr/lib -Wl,--sort-common,--as-needed"
+
+      - name: Compile and install Wine 11.22
+        run: |
+          set -euo pipefail
+          cd "$BUILD_DIR"
           make -j"$(nproc)"
-          make DESTDIR="$WINE_BUILD/stage" install
+          make DESTDIR="$STAGE_DIR" install STRIP=true
+          WINE_ROOT="$STAGE_DIR/opt/wine"
+          test -x "$WINE_ROOT/bin/wine"
+          test -f "$WINE_ROOT/lib/wine/aarch64-windows/ntdll.dll"
+          test -f "$WINE_ROOT/lib/wine/arm64ec-windows/ntdll.dll"
+          test -f "$WINE_ROOT/lib/wine/i386-windows/ntdll.dll"
+          test -f "$WINE_ROOT/lib/wine/aarch64-unix/ntdll.so"
+          file "$WINE_ROOT/bin/wine"
+          file "$WINE_ROOT/lib/wine/aarch64-unix/ntdll.so"
+          file "$WINE_ROOT/lib/wine/arm64ec-windows/ntdll.dll"
+          printf '%s\n' "Wine source version: $WINE_VERSION" > "$STAGE_DIR/WINE-BUILD-INFO.txt"
 
-      - name: Validate the staged Wine runtime
-        shell: bash
+      - name: Merge Wine into existing RootFS and package
         run: |
           set -euo pipefail
-          STAGE="$WINE_BUILD/stage"
-          test -x "$STAGE/opt/wine/bin/wine"
-          file "$STAGE/opt/wine/bin/wine"
-          # Do not package a partial or non-11.22 runtime.
-          VERSION="$(chroot "$ROOTFS" /opt/wine/bin/wine --version 2>/dev/null || true)"
-          echo "Existing runtime before replacement: $VERSION"
-          find "$STAGE/opt/wine" -maxdepth 3 -type f | head -100
-
-      - name: Integrate Wine and package RootFS
-        shell: bash
-        run: |
-          set -euo pipefail
-          test -d "$WINE_BUILD/stage/opt/wine"
-          rm -rf "$ROOTFS/opt/wine"
-          mkdir -p "$ROOTFS/opt/wine"
-          rsync -a "$WINE_BUILD/stage/opt/wine/" "$ROOTFS/opt/wine/"
-          test -x "$ROOTFS/opt/wine/bin/wine"
-
+          WINE_ROOT="$STAGE_DIR/opt/wine"
+          rm -rf "$ROOTFS_DIR/opt/wine"
+          mkdir -p "$ROOTFS_DIR/opt/wine"
+          rsync -a "$WINE_ROOT/" "$ROOTFS_DIR/opt/wine/"
+          test -x "$ROOTFS_DIR/opt/wine/bin/wine"
+          test -f "$ROOTFS_DIR/opt/wine/lib/wine/arm64ec-windows/ntdll.dll"
           mkdir -p dist
-          tar -I 'zstd -T0 -19' -cf dist/rootfs-wine-11.22.tzst -C "$ROOTFS" .
+          tar -I 'zstd -T0 -19' -cf dist/rootfs-wine-11.22.tzst -C "$ROOTFS_DIR" .
           test -s dist/rootfs-wine-11.22.tzst
           sha256sum dist/rootfs-wine-11.22.tzst > dist/SHA256SUMS.txt
+          printf '%s\n' "Built from Wine $WINE_VERSION source" > dist/BUILD-INFO.txt
 
       - name: Upload RootFS artifact for review
         uses: actions/upload-artifact@v4
         with:
-          name: winlator-rootfs-wine-11.22
+          name: winlator-rootfs-wine-11.22-arm64ec
           path: |
             dist/rootfs-wine-11.22.tzst
             dist/SHA256SUMS.txt
+            dist/BUILD-INFO.txt
           if-no-files-found: error
           retention-days: 14
