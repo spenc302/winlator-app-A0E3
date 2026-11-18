@@ -101,7 +101,12 @@ jobs:
           export PATH="$RUNNER_TEMP/llvm-mingw/bin:$PATH"
           export PKG_CONFIG_LIBDIR="/usr/lib/aarch64-linux-gnu/pkgconfig:/usr/share/pkgconfig"
           unset PKG_CONFIG_PATH PKG_CONFIG_SYSROOT_DIR CROSSCC
-          "$WINE_SOURCE_DIR/wine-11.22/configure" \
+          env \
+            CC=aarch64-linux-gnu-gcc \
+            CFLAGS="-O2 -pipe -Wno-error=implicit-function-declaration -Wno-error=incompatible-pointer-types" \
+            CROSSCFLAGS="-O2 -pipe" \
+            LDFLAGS="-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1 -Wl,-rpath=/usr/lib -Wl,--sort-common,--as-needed" \
+            "$WINE_SOURCE_DIR/wine-11.22/configure" \
             --prefix=/opt/wine \
             --host=aarch64-linux-gnu \
             --enable-archs=arm64ec,aarch64,i386 \
